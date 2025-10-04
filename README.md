@@ -150,6 +150,7 @@ When compiling the Linux kernel, you can choose to incorporate modules as part o
 
 - [The Linux Concept Journey — Loadable Kernel Module (LKM)](https://medium.com/@boutnaru/the-linux-concept-journey-loadable-kernel-module-lkm-5eaa4db346a1) - Comprehensive article about Linux Loadable Kernel Modules
 - [Linux Module HOWTO](https://tldp.org/HOWTO/Module-HOWTO/x73.html) - Official documentation on kernel modules
+- [Kbuild Documentation - modules.builtin](https://www.kernel.org/doc/html/latest/kbuild/kbuild.html#modules-builtin) - Official Linux kernel documentation on builtin modules and build system
 - [insmod manual page](https://man7.org/linux/man-pages/man8/insmod.8.html) - Manual for loading kernel modules
 - [lsmod manual page](https://man7.org/linux/man-pages/man8/lsmod.8.html) - Manual for listing loaded modules
 - [proc manual page](https://man7.org/linux/man-pages/man5/proc.5.html) - Documentation for /proc filesystem
