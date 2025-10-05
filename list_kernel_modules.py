@@ -22,23 +22,26 @@ class KernelModule:
     
     def __init__(self, name: str, size: int, ref_count: int, 
                  dependencies: List[str], status: str, address: str, 
-                 module_type: str = "loadable"):
+                 module_type: str = "loadable", file_path: str = ""):
         self.name = name
         self.size = size
         self.ref_count = ref_count
         self.dependencies = dependencies
         self.status = status
         self.address = address
-        self.module_type = module_type  # "loadable" or "builtin"
+        self.module_type = module_type
+        self.file_path = file_path  # "loadable" or "builtin"
     
     def __str__(self) -> str:
         deps_str = ", ".join(self.dependencies) if self.dependencies else "None"
+        file_path_str = self.file_path if self.file_path else "N/A"
         return (f"Module: {self.name} ({self.module_type})\n"
                 f"  Size: {self.size} bytes\n"
                 f"  Reference Count: {self.ref_count}\n"
                 f"  Dependencies: {deps_str}\n"
                 f"  Status: {self.status}\n"
-                f"  Address: {self.address}\n")
+                f"  Address: {self.address}\n"
+                f"  File Path: {file_path_str}\n")
 
 
 class BuiltinModule:
@@ -288,6 +291,25 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
     return builtin_modules
 
 
+def get_module_file_path(module_name: str) -> str:
+    """
+    Get the full file path of a kernel module using modinfo.
+    
+    Args:
+        module_name: Name of the module
+        
+    Returns:
+        str: Full path to the module file, or empty string if not found
+    """
+    try:
+        result = subprocess.run(['modinfo', '-n', module_name], 
+                              capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # modinfo might not be available or module might not have a file
+        return ""
+
+
 def parse_proc_modules() -> List[KernelModule]:
     """
     Parse /proc/modules file and return a list of KernelModule objects.
@@ -330,7 +352,9 @@ def parse_proc_modules() -> List[KernelModule]:
                 status = parts[4]
                 address = parts[5]
                 
-                module = KernelModule(name, size, ref_count, dependencies, status, address)
+                # Get file path using modinfo
+                file_path = get_module_file_path(name)
+                module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path)
                 modules.append(module)
                 
     except FileNotFoundError:
@@ -447,7 +471,8 @@ def modules_to_json(modules: List[Union[KernelModule, BuiltinModule]],
                 'dependencies': module.dependencies,
                 'status': module.status,
                 'address': module.address,
-                'type': module.module_type
+                'type': module.module_type,
+                'file_path': module.file_path
             })
         else:
             data['builtin_modules'].append({
@@ -481,7 +506,7 @@ def modules_to_csv(modules: List[Union[KernelModule, BuiltinModule]],
     writer = csv.writer(output)
     
     # Write header
-    writer.writerow(['Name', 'Type', 'Size', 'Ref Count', 'Status', 'Dependencies', 'Description'])
+    writer.writerow(['Name', 'Type', 'Size', 'Ref Count', 'Status', 'Dependencies', 'File Path', 'Description'])
     
     # Write loadable modules
     for module in modules:
@@ -493,6 +518,7 @@ def modules_to_csv(modules: List[Union[KernelModule, BuiltinModule]],
                 module.ref_count,
                 module.status,
                 ','.join(module.dependencies) if module.dependencies else '',
+                module.file_path or 'N/A',
                 ''
             ])
     
@@ -506,6 +532,7 @@ def modules_to_csv(modules: List[Union[KernelModule, BuiltinModule]],
                 '',
                 'Always',
                 '',
+                'N/A',  # Builtin modules don't have file paths
                 module.description
             ])
     
@@ -792,6 +819,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <th>Ref Count</th>
                             <th>Status</th>
                             <th>Dependencies</th>
+                            <th>File Path</th>
                             <th>Address</th>
                         </tr>
                     </thead>
@@ -802,6 +830,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         if isinstance(module, KernelModule):
             deps_str = ', '.join(module.dependencies) if module.dependencies else 'None'
             status_class = f"status-{module.status.lower()}"
+            file_path = module.file_path or 'N/A'
             html += f"""
                         <tr>
                             <td><strong>{module.name}</strong></td>
@@ -810,6 +839,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <td>{module.ref_count}</td>
                             <td><span class="{status_class}">{module.status}</span></td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
+                            <td><code>{file_path}</code></td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
     
@@ -919,18 +949,19 @@ def display_modules(modules: List[KernelModule], builtin_modules: List[BuiltinMo
     if not show_details:
         # Simple table format
         if not quiet:
-            print(f"{'Module Name':<25} {'Type':<10} {'Size':<10} {'Ref Count':<10} {'Status':<10}")
-            print("-" * 70)
+            print(f"{'Module Name':<25} {'Type':<10} {'Size':<10} {'Ref Count':<10} {'Status':<10} {'File Path':<50}")
+            print("-" * 120)
         
         # Display loadable modules
         for module in modules:
             size_str = format_size(module.size)
-            print(f"{module.name:<25} {'Loadable':<10} {size_str:<10} {module.ref_count:<10} {module.status:<10}")
+            file_path = module.file_path or 'N/A'
+            print(f"{module.name:<25} {'Loadable':<10} {size_str:<10} {module.ref_count:<10} {module.status:<10} {file_path:<50}")
         
         # Display builtin modules if requested
         if show_builtin and builtin_modules:
             for module in builtin_modules:
-                print(f"{module.name:<25} {'Builtin':<10} {'N/A':<10} {'N/A':<10} {'Always':<10}")
+                print(f"{module.name:<25} {'Builtin':<10} {'N/A':<10} {'N/A':<10} {'Always':<10} {'N/A':<50}")
     else:
         # Detailed format
         if not quiet:
