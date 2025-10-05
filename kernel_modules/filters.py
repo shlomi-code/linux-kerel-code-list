@@ -129,18 +129,19 @@ class ModuleDisplay:
         if not show_details:
             # Simple table format
             if not quiet:
-                print(f"{'Module Name':<25} {'Type':<10} {'Size':<10} {'Ref Count':<10} {'Status':<10}")
-                print("-" * 70)
+                print(f"{'Module Name':<25} {'Type':<10} {'Size':<10} {'Ref Count':<10} {'Status':<10} {'File Path':<50}")
+                print("-" * 120)
             
             # Display loadable modules
             for module in modules:
                 size_str = ModuleDisplay.format_size(module.size)
-                print(f"{module.name:<25} {'Loadable':<10} {size_str:<10} {module.ref_count:<10} {module.status:<10}")
+                file_path = module.file_path or 'N/A'
+                print(f"{module.name:<25} {'Loadable':<10} {size_str:<10} {module.ref_count:<10} {module.status:<10} {file_path:<50}")
             
             # Display builtin modules if requested
             if show_builtin and builtin_modules:
                 for module in builtin_modules:
-                    print(f"{module.name:<25} {'Builtin':<10} {'N/A':<10} {'N/A':<10} {'Always':<10}")
+                    print(f"{module.name:<25} {'Builtin':<10} {'N/A':<10} {'N/A':<10} {'Always':<10} {'N/A':<50}")
         else:
             # Detailed format
             if not quiet:
