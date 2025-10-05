@@ -71,7 +71,7 @@ class CSVFormatter(BaseFormatter):
         writer = csv.writer(output)
         
         # Write header
-        writer.writerow(['Name', 'Type', 'Size', 'Ref Count', 'Status', 'Dependencies', 'Description'])
+        writer.writerow(['Name', 'Type', 'Size', 'Ref Count', 'Status', 'Dependencies', 'File Path', 'Description'])
         
         # Write loadable modules
         for module in modules:
@@ -83,6 +83,7 @@ class CSVFormatter(BaseFormatter):
                     module.ref_count,
                     module.status,
                     ','.join(module.dependencies) if module.dependencies else '',
+                    module.file_path or 'N/A',
                     ''
                 ])
         
@@ -96,6 +97,7 @@ class CSVFormatter(BaseFormatter):
                     '',
                     'Always',
                     '',
+                    'N/A',  # Builtin modules don't have file paths
                     module.description
                 ])
         
@@ -398,6 +400,7 @@ class HTMLFormatter(BaseFormatter):
                             <th>Ref Count</th>
                             <th>Status</th>
                             <th>Dependencies</th>
+                            <th>File Path</th>
                             <th>Address</th>
                         </tr>
                     </thead>
@@ -408,6 +411,7 @@ class HTMLFormatter(BaseFormatter):
             if isinstance(module, KernelModule):
                 deps_str = ', '.join(module.dependencies) if module.dependencies else 'None'
                 status_class = f"status-{module.status.lower()}"
+                file_path = module.file_path or 'N/A'
                 html += f"""
                         <tr>
                             <td><strong>{module.name}</strong></td>
@@ -416,6 +420,7 @@ class HTMLFormatter(BaseFormatter):
                             <td>{module.ref_count}</td>
                             <td><span class="{status_class}">{module.status}</span></td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
+                            <td><code>{file_path}</code></td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
         
