@@ -59,7 +59,9 @@ class ModuleParser:
                     status = parts[4]
                     address = parts[5]
                     
-                    module = KernelModule(name, size, ref_count, dependencies, status, address)
+                    # Get file path using modinfo
+                    file_path = ModuleParser._get_module_file_path(name)
+                    module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path)
                     modules.append(module)
                     
         except FileNotFoundError:
@@ -70,6 +72,25 @@ class ModuleParser:
             raise Exception(f"Error parsing /proc/modules: {e}")
         
         return modules
+    
+    @staticmethod
+    def _get_module_file_path(module_name: str) -> str:
+        """
+        Get the full file path of a kernel module using modinfo.
+        
+        Args:
+            module_name: Name of the module
+            
+        Returns:
+            str: Full path to the module file, or empty string if not found
+        """
+        try:
+            result = subprocess.run(['modinfo', '-n', module_name], 
+                                  capture_output=True, text=True, check=True)
+            return result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # modinfo might not be available or module might not have a file
+            return ""
 
 
 class BuiltinModuleParser:
