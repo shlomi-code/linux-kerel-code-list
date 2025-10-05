@@ -10,6 +10,7 @@ import csv
 import io
 import datetime
 import platform
+import os
 from typing import List, Dict, Union
 from .models import KernelModule, BuiltinModule
 
@@ -305,6 +306,14 @@ class HTMLFormatter(BaseFormatter):
         .summary li {{
             margin: 5px 0;
         }}
+        .notice-warning {{
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            color: #9a3412;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin: 0 0 20px 0;
+        }}
     </style>
     <script>
         function searchModules() {{
@@ -367,6 +376,13 @@ class HTMLFormatter(BaseFormatter):
                 </ul>
             </div>
             
+            {"""
+            Add a privilege notice when not run as root. We only display a message; data remains as-is.
+            """}
+            {('<div class="notice-warning">\n'
+              '  Note: Running without root privileges. Addresses of loaded kernel modules may be unavailable or masked due to restricted privileges.\n'
+              '</div>') if (hasattr(os, 'geteuid') and os.geteuid() != 0) else ''}
+
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search modules..." onkeyup="searchModules()">
             </div>
