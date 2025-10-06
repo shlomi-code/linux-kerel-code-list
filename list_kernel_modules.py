@@ -933,6 +933,31 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             content: ' ↓';
             opacity: 1;
         }}
+        .collapsible-header {{
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }}
+        .collapsible-header::after {{
+            content: ' ▼';
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: transform 0.3s ease;
+        }}
+        .collapsible-header.collapsed::after {{
+            transform: translateY(-50%) rotate(-90deg);
+        }}
+        .collapsible-content {{
+            transition: opacity 0.3s ease;
+        }}
+        .collapsible-content.collapsed {{
+            display: none;
+        }}
+        .collapsible-content.expanded {{
+            display: block;
+        }}
         .module-table td {{
             padding: 12px;
             border-bottom: 1px solid #e2e8f0;
@@ -1092,8 +1117,45 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             }});
         }}
         
-        // Initialize sorting when page loads
-        document.addEventListener('DOMContentLoaded', makeSortable);
+        function makeCollapsible() {{
+            const sections = document.querySelectorAll('.section');
+            sections.forEach((section, index) => {{
+                const header = section.querySelector('h2');
+                const table = section.querySelector('.module-table');
+                
+                if (header && table) {{
+                    // First table (Loadable Modules) is expanded by default
+                    if (index === 0) {{
+                        header.classList.add('collapsible-header', 'expanded');
+                        table.classList.add('collapsible-content', 'expanded');
+                    }} else {{
+                        header.classList.add('collapsible-header', 'collapsed');
+                        table.classList.add('collapsible-content', 'collapsed');
+                    }}
+                    
+                    header.addEventListener('click', () => {{
+                        const isCollapsed = header.classList.contains('collapsed');
+                        if (isCollapsed) {{
+                            header.classList.remove('collapsed');
+                            header.classList.add('expanded');
+                            table.classList.remove('collapsed');
+                            table.classList.add('expanded');
+                        }} else {{
+                            header.classList.add('collapsed');
+                            header.classList.remove('expanded');
+                            table.classList.remove('expanded');
+                            table.classList.add('collapsed');
+                        }}
+                    }});
+                }}
+            }});
+        }}
+        
+        // Initialize sorting and collapsible when page loads
+        document.addEventListener('DOMContentLoaded', () => {{
+            makeSortable();
+            makeCollapsible();
+        }});
     </script>
 </head>
 <body>
@@ -1148,7 +1210,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Type</th>
                             <th>Size</th>
                             <th>Ref Count</th>
                             <th>Dependencies</th>
@@ -1168,7 +1229,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             html += f"""
                         <tr>
                             <td><strong>{module.name}</strong></td>
-                            <td><span class="module-type type-loadable">Loadable</span></td>
                             <td>{format_size(module.size)}</td>
                             <td>{module.ref_count}</td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
@@ -1191,7 +1251,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Type</th>
                             <th>Description</th>
                             <th>Version</th>
                             <th>Author</th>
@@ -1204,7 +1263,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             html += f"""
                             <tr>
                                 <td><strong>{module.name}</strong></td>
-                                <td><span class="module-type type-builtin">Builtin</span></td>
                                 <td>{module.description or 'N/A'}</td>
                                 <td>{module.version or 'N/A'}</td>
                                 <td>{module.author or 'N/A'}</td>
@@ -1225,7 +1283,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Type</th>
                             <th>Size</th>
                             <th>File Path</th>
                             <th>Description</th>
@@ -1239,7 +1296,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             html += f"""
                         <tr>
                             <td><strong>{module['name']}</strong></td>
-                            <td><span class="module-type type-loadable">Loadable</span></td>
                             <td>{format_size(module['size'])}</td>
                             <td><code>{file_path}</code></td>
                             <td>{description}</td>
