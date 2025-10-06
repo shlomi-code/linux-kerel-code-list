@@ -9,8 +9,16 @@ import os
 import sys
 import subprocess
 import re
+import zstandard as zstd
+import tempfile
 from typing import List, Set, Optional
 from .models import KernelModule, BuiltinModule
+
+try:
+    from elftools.elf.elffile import ELFFile
+    ELF_TOOLS_AVAILABLE = True
+except ImportError:
+    ELF_TOOLS_AVAILABLE = False
 
 
 class ModuleParser:
@@ -59,9 +67,10 @@ class ModuleParser:
                     status = parts[4]
                     address = parts[5]
                     
-                    # Get file path using modinfo
+                    # Get file path and description using modinfo
                     file_path = ModuleParser._get_module_file_path(name)
-                    module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path)
+                    description = ModuleParser._get_module_description(name)
+                    module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path, description)
                     modules.append(module)
                     
         except FileNotFoundError:
@@ -90,6 +99,120 @@ class ModuleParser:
             return result.stdout.strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
             # modinfo might not be available or module might not have a file
+            return ""
+    
+    @staticmethod
+    def _get_module_description(module_name: str) -> str:
+        """
+        Get the description of a kernel module by parsing the ELF file.
+        
+        Args:
+            module_name: Name of the module
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        # First try to get the file path
+        file_path = ModuleParser._get_module_file_path(module_name)
+        if not file_path:
+            return ""
+        
+        # Try ELF parsing first if available
+        if ELF_TOOLS_AVAILABLE:
+            description = ModuleParser._extract_description_from_elf(file_path)
+            if description:
+                return description
+        
+        # Fallback to modinfo if ELF parsing fails or is not available
+        try:
+            result = subprocess.run(['modinfo', '-F', 'description', module_name], 
+                                  capture_output=True, text=True, check=True)
+            return result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return ""
+    
+    @staticmethod
+    def _extract_description_from_elf(file_path: str) -> str:
+        """
+        Extract module description from ELF file by parsing the .modinfo section.
+        
+        Args:
+            file_path: Path to the kernel module file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            # Handle compressed modules
+            if file_path.endswith('.ko.zst'):
+                return ModuleParser._extract_from_compressed_elf(file_path)
+            else:
+                return ModuleParser._extract_from_elf_file(file_path)
+        except Exception as e:
+            print(f"Warning: Error parsing ELF file {file_path}: {e}", file=sys.stderr)
+            return ""
+    
+    @staticmethod
+    def _extract_from_elf_file(file_path: str) -> str:
+        """
+        Extract description from uncompressed ELF file.
+        
+        Args:
+            file_path: Path to the .ko file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                elf = ELFFile(f)
+                modinfo_section = elf.get_section_by_name('.modinfo')
+                if not modinfo_section:
+                    return ""
+                
+                modinfo_data = modinfo_section.data()
+                modinfo_strings = modinfo_data.split(b'\x00')
+                
+                for entry in modinfo_strings:
+                    if entry.startswith(b'description='):
+                        return entry.split(b'=', 1)[1].decode('utf-8', errors='ignore')
+                
+                return ""
+        except Exception as e:
+            print(f"Warning: Error reading ELF file {file_path}: {e}", file=sys.stderr)
+            return ""
+    
+    @staticmethod
+    def _extract_from_compressed_elf(file_path: str) -> str:
+        """
+        Extract description from compressed .ko.zst file.
+        
+        Args:
+            file_path: Path to the .ko.zst file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            # Decompress the file to a temporary location
+            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+                temp_path = temp_file.name
+                
+                # Decompress using zstandard
+                with open(file_path, 'rb') as compressed_file:
+                    dctx = zstd.ZstdDecompressor()
+                    with dctx.stream_reader(compressed_file) as reader:
+                        temp_file.write(reader.read())
+                
+                # Extract description from decompressed file
+                description = ModuleParser._extract_from_elf_file(temp_path)
+                
+                # Clean up temporary file
+                os.unlink(temp_path)
+                
+                return description
+        except Exception as e:
+            print(f"Warning: Error decompressing {file_path}: {e}", file=sys.stderr)
             return ""
 
 
