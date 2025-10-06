@@ -354,17 +354,28 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
                         flush_current()
                         current = {}
                     continue
-                if '=' not in line:
+                key = ''
+                val = ''
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    key = k.strip().lower()
+                    val = v.strip()
+                elif ':' in line:
+                    k, v = line.split(':', 1)
+                    key = k.strip().lower()
+                    val = v.strip()
+                else:
                     continue
-                k, v = line.split('=', 1)
-                key = k.strip().lower()
-                val = v.strip()
                 # Normalize license key spelling
                 if key == 'licence':
                     key = 'license'
                 # Normalize filename key variants
                 if key in ('file', 'filename'):
                     key = 'filename'
+                    # New filename denotes new module entry boundary
+                    if current and current.get('filename') and val != current.get('filename'):
+                        flush_current()
+                        current = {}
                 # A new name= typically denotes start of a new module's block
                 if key == 'name' and current.get('name') and val != current.get('name'):
                     flush_current()
