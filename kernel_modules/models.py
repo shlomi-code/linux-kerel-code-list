@@ -13,7 +13,7 @@ class KernelModule:
     
     def __init__(self, name: str, size: int, ref_count: int, 
                  dependencies: List[str], status: str, address: str, 
-                 module_type: str = "loadable", file_path: str = ""):
+                 module_type: str = "loadable", file_path: str = "", description: str = ""):
         """
         Initialize a KernelModule instance.
         
@@ -26,6 +26,7 @@ class KernelModule:
             address: Memory address
             module_type: Type of module (loadable or builtin)
             file_path: Full path to the module file (.ko file)
+            description: Module description
         """
         self.name = name
         self.size = size
@@ -35,18 +36,21 @@ class KernelModule:
         self.address = address
         self.module_type = module_type
         self.file_path = file_path
+        self.description = description
     
     def __str__(self) -> str:
         """Return string representation of the module."""
         deps_str = ", ".join(self.dependencies) if self.dependencies else "None"
         file_path_str = self.file_path if self.file_path else "N/A"
+        description_str = self.description if self.description else "N/A"
         return (f"Module: {self.name} ({self.module_type})\n"
                 f"  Size: {self.size} bytes\n"
                 f"  Reference Count: {self.ref_count}\n"
                 f"  Dependencies: {deps_str}\n"
                 f"  Status: {self.status}\n"
                 f"  Address: {self.address}\n"
-                f"  File Path: {file_path_str}\n")
+                f"  File Path: {file_path_str}\n"
+                f"  Description: {description_str}\n")
     
     def __repr__(self) -> str:
         """Return detailed string representation."""
@@ -63,7 +67,8 @@ class KernelModule:
             'status': self.status,
             'address': self.address,
             'type': self.module_type,
-            'file_path': self.file_path
+            'file_path': self.file_path,
+            'description': self.description
         }
 
 
