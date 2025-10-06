@@ -428,9 +428,75 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
             # flush last seen module
             if current:
                 flush_current()
+
+        # If nothing parsed (non-text format), fallback to strings-like extraction
+        if not result:
+            desc_map = _extract_descriptions_via_strings(path)
+            # convert to unified result structure
+            for mod_name, description in desc_map.items():
+                if mod_name not in result:
+                    result[mod_name] = {
+                        'description': description,
+                        'version': '',
+                        'author': '',
+                        'license': ''
+                    }
     except Exception as e:
         print(f"Warning: Error parsing modules.builtin.modinfo: {e}", file=sys.stderr)
     return result
+
+
+def _extract_descriptions_via_strings(file_path: str) -> Dict[str, str]:
+    """Extract descriptions for builtin modules by scanning printable strings.
+    Looks for tokens like '<name>.description=<text>' without using external tools.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+    except Exception:
+        return {}
+
+    def is_printable_byte(b: int) -> bool:
+        # ASCII printable range and common whitespace separators
+        return (32 <= b <= 126) or b in (9,)
+
+    strings: List[str] = []
+    buf: List[int] = []
+    min_len = 3
+    for b in data:
+        if is_printable_byte(b):
+            buf.append(b)
+        else:
+            if len(buf) >= min_len:
+                try:
+                    strings.append(bytes(buf).decode('utf-8', errors='ignore'))
+                except Exception:
+                    pass
+            buf = []
+    if len(buf) >= min_len:
+        try:
+            strings.append(bytes(buf).decode('utf-8', errors='ignore'))
+        except Exception:
+            pass
+
+    desc_map: Dict[str, str] = {}
+    for s in strings:
+        # Simple pattern match: <name>.description=<value>
+        if '.description=' in s:
+            try:
+                left, right = s.split('.description=', 1)
+                name = left.split()[-1] if ' ' in left else left
+                name = name.strip().strip('"\'')
+                value = right.strip().strip('"\'')
+                # normalize name if it looks like a path
+                if '/' in name:
+                    import os as _os
+                    name = _os.path.basename(name).replace('.ko', '')
+                if name and value and name not in desc_map:
+                    desc_map[name] = value
+            except Exception:
+                continue
+    return desc_map
 
 
 def get_description_via_modinfo(module_name: str) -> str:
