@@ -333,7 +333,12 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             current: Dict[str, str] = {}
             def flush_current():
-                name = current.get('name') or current.get('module')
+                name = current.get('name') or current.get('module') or current.get('filename')
+                # Derive name from filename if needed
+                if name and '/' in name:
+                    import os as _os
+                    base = _os.path.basename(name)
+                    name = base.replace('.ko', '')
                 if name and name not in result:
                     result[name] = {
                         'description': current.get('description', ''),
@@ -354,6 +359,12 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
                 k, v = line.split('=', 1)
                 key = k.strip().lower()
                 val = v.strip()
+                # Normalize license key spelling
+                if key == 'licence':
+                    key = 'license'
+                # Normalize filename key variants
+                if key in ('file', 'filename'):
+                    key = 'filename'
                 # A new name= typically denotes start of a new module's block
                 if key == 'name' and current.get('name') and val != current.get('name'):
                     flush_current()
