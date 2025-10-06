@@ -625,25 +625,23 @@ class HTMLFormatter(BaseFormatter):
             }});
         }}
         
-        // Initialize sorting, collapsible, and charts when page loads
+        // Initialize sorting, collapsible, and chart when page loads
         document.addEventListener('DOMContentLoaded', () => {{
             makeSortable();
             makeCollapsible();
             try {{
-                const statusCtx = document.getElementById('statusChart');
-                if (statusCtx) {{
-                    new Chart(statusCtx, {{
+                const ov = document.getElementById('overviewChart');
+                if (ov) {{
+                    new Chart(ov, {{
                         type: 'doughnut',
                         data: {{
-                            labels: {list(status_groups.keys())},
+                            labels: ['Loaded', 'Builtin', 'Unloaded'],
                             datasets: [{{
-                                data: {list(status_groups.values())},
-                                backgroundColor: ['#10b981','#ef4444','#f59e0b','#3b82f6','#8b5cf6','#14b8a6']
+                                data: [{loadable_count}, {builtin_count}, {unloaded_count}],
+                                backgroundColor: ['#1e40af','#f59e0b','#94a3b8']
                             }}]
                         }},
-                        options: {{
-                            plugins: {{ legend: {{ position: 'bottom' }} }}
-                        }}
+                        options: {{ plugins: {{ legend: {{ position: 'bottom' }} }} }}
                     }});
                 }}
             }} catch (e) {{
@@ -667,9 +665,9 @@ class HTMLFormatter(BaseFormatter):
             <div class="section">
                 <h2>Descriptive Analysis</h2>
                 <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
-                    <div style="flex:1; min-width:280px;">
-                        <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Module Status Distribution</h3>
-                        <canvas id="statusChart" height="160"></canvas>
+                    <div style="flex:1; min-width:320px;">
+                        <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Modules Overview</h3>
+                        <canvas id="overviewChart" height="180"></canvas>
                     </div>
                 </div>
             </div>
