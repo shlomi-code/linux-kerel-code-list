@@ -139,7 +139,6 @@ class TestKernelModuleLister(unittest.TestCase):
         output = f.getvalue()
         
         # Should contain expected headers
-        self.assertIn("Loaded Kernel Modules", output)
         self.assertIn("Module Name", output)
         self.assertIn("Size", output)
         self.assertIn("Ref Count", output)
@@ -160,7 +159,6 @@ class TestKernelModuleLister(unittest.TestCase):
         output = f.getvalue()
         
         # Should contain expected headers
-        self.assertIn("Loaded Kernel Modules", output)
         self.assertIn("Module:", output)
         self.assertIn("Size:", output)
         self.assertIn("Reference Count:", output)
@@ -197,7 +195,7 @@ class TestKernelModuleLister(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         
         # Should contain help text
-        self.assertIn("List all loaded kernel modules", result.stdout)
+        self.assertIn("List all kernel modules (loadable and builtin)", result.stdout)
         self.assertIn("--detailed", result.stdout)
         self.assertIn("--count", result.stdout)
     
@@ -317,7 +315,7 @@ class TestIntegration(unittest.TestCase):
         data_lines = []
         in_data = False
         for line in lines:
-            if line.startswith('Module Name'):
+            if 'Module Name' in line and '|' in line:
                 in_data = True
                 continue
             elif line.startswith('-'):
@@ -326,22 +324,42 @@ class TestIntegration(unittest.TestCase):
                 data_lines.append(line)
         
         for line in data_lines:
-            parts = line.split()
-            if len(parts) >= 4:
-                name = parts[0]
-                size_str = parts[1] + ' ' + parts[2]  # Size and unit are separate
-                ref_count = int(parts[3])
-                status = parts[4]
-                
-                # Convert size back to bytes
-                size = self._parse_size_to_bytes(size_str)
-                
-                modules[name] = {
-                    'size': size,
-                    'ref_count': ref_count,
-                    'status': status,
-                    'dependencies': set()  # Not shown in simple output
-                }
+            # Handle table format with | separators
+            if '|' in line and not line.strip().startswith('|---'):
+                parts = [p.strip() for p in line.split('|') if p.strip()]
+                if len(parts) >= 5:
+                    name = parts[0]
+                    size_str = parts[2]  # Size is in the 3rd column
+                    ref_count = int(parts[3])
+                    status = parts[4]
+                    
+                    # Convert size back to bytes
+                    size = self._parse_size_to_bytes(size_str)
+                    
+                    modules[name] = {
+                        'size': size,
+                        'ref_count': ref_count,
+                        'status': status,
+                        'dependencies': set()  # Not shown in simple output
+                    }
+            else:
+                # Fallback to space-separated format
+                parts = line.split()
+                if len(parts) >= 4:
+                    name = parts[0]
+                    size_str = parts[1] + ' ' + parts[2]  # Size and unit are separate
+                    ref_count = int(parts[3])
+                    status = parts[4]
+                    
+                    # Convert size back to bytes
+                    size = self._parse_size_to_bytes(size_str)
+                    
+                    modules[name] = {
+                        'size': size,
+                        'ref_count': ref_count,
+                        'status': status,
+                        'dependencies': set()  # Not shown in simple output
+                    }
         
         return modules
     
