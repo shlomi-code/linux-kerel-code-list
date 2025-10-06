@@ -36,7 +36,8 @@ class KernelModule:
     
     def __init__(self, name: str, size: int, ref_count: int, 
                  dependencies: List[str], status: str, address: str, 
-                 module_type: str = "loadable", file_path: str = "", description: str = ""):
+                 module_type: str = "loadable", file_path: str = "", description: str = "",
+                 signed: str = ""):
         self.name = name
         self.size = size
         self.ref_count = ref_count
@@ -46,6 +47,7 @@ class KernelModule:
         self.module_type = module_type
         self.file_path = file_path
         self.description = description
+        self.signed = signed
     
     def __str__(self) -> str:
         deps_str = ", ".join(self.dependencies) if self.dependencies else "None"
@@ -408,6 +410,93 @@ def extract_from_elf_file(file_path: str) -> str:
         return ""
 
 
+def _elf_has_signature_info(file_path: str) -> bool:
+    """
+    Check for signature-related keys in the ELF .modinfo section.
+    Returns True if keys like sig_id/signature/signer are present.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            elf = ELFFile(f)
+            modinfo_section = elf.get_section_by_name('.modinfo')
+            if not modinfo_section:
+                return False
+            modinfo_data = modinfo_section.data()
+            modinfo_strings = modinfo_data.split(b'\x00')
+            for entry in modinfo_strings:
+                # Common keys present for signed modules
+                if (entry.startswith(b'sig_id=') or
+                    entry.startswith(b'signer=') or
+                    entry.startswith(b'signature=') or
+                    entry.startswith(b'sig_key=') or
+                    entry.startswith(b'sig_hashalgo=')):
+                    return True
+    except Exception:
+        return False
+    return False
+
+
+def _file_has_appended_signature_marker(file_path: str) -> bool:
+    """
+    Check for the textual marker that appears in signed modules:
+    "~Module signature appended~" near the end of the file.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            read_size = min(8192, size)
+            f.seek(size - read_size)
+            tail = f.read(read_size)
+            return b'Module signature appended' in tail
+    except Exception:
+        return False
+
+
+def is_module_signed_from_file(file_path: str) -> Optional[bool]:
+    """
+    Determine whether the module file is signed.
+    Tries ELF .modinfo keys and appended signature marker.
+    Returns True/False, or None if undetermined.
+    """
+    if not file_path:
+        return None
+    try:
+        # If compressed, decompress to temp first
+        if file_path.endswith('.ko.zst'):
+            if not ZSTD_AVAILABLE:
+                return None
+            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+                temp_path = temp_file.name
+                try:
+                    with open(file_path, 'rb') as compressed_file:
+                        dctx = zstd.ZstdDecompressor()
+                        with dctx.stream_reader(compressed_file) as reader:
+                            temp_file.write(reader.read())
+                finally:
+                    temp_file.flush()
+            try:
+                # Check both ELF modinfo and appended marker
+                if ELF_TOOLS_AVAILABLE and _elf_has_signature_info(temp_path):
+                    return True
+                if _file_has_appended_signature_marker(temp_path):
+                    return True
+                return False
+            finally:
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+        else:
+            if ELF_TOOLS_AVAILABLE and _elf_has_signature_info(file_path):
+                return True
+            if _file_has_appended_signature_marker(file_path):
+                return True
+            return False
+    except Exception:
+        return None
+
+
 def extract_from_compressed_elf(file_path: str) -> str:
     """
     Extract description from compressed .ko.zst file.
@@ -487,10 +576,12 @@ def parse_proc_modules() -> List[KernelModule]:
                 status = parts[4]
                 address = parts[5]
                 
-                # Get file path and description using modinfo
+                # Get file path and description using modinfo/ELF
                 file_path = get_module_file_path(name)
                 description = get_module_description(name)
-                module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path, description)
+                signed_flag = is_module_signed_from_file(file_path)
+                signed_str = 'Yes' if signed_flag else ('No' if signed_flag is False else 'Unknown')
+                module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path, description, signed_str)
                 modules.append(module)
                 
     except FileNotFoundError:
@@ -1215,6 +1306,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <th>Dependencies</th>
                             <th>File Path</th>
                             <th>Description</th>
+                            <th>Signed</th>
                             <th>Address</th>
                         </tr>
                     </thead>
@@ -1234,6 +1326,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
                             <td><code>{file_path}</code></td>
                             <td>{description}</td>
+                            <td>{module.signed}</td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
     
