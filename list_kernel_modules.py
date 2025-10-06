@@ -1322,9 +1322,9 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             <div class="section">
                 <h2>Descriptive Analysis</h2>
                 <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
-                    <div style="flex:0 0 auto; width:260px; height:140px;">
+                    <div style="flex:0 0 auto; width:480px; height:240px;">
                         <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Modules Overview</h3>
-                        <div style="position:relative; width:100%; height:100px;">
+                        <div style="position:relative; width:100%; height:200px;">
                             <canvas id="overviewChart"></canvas>
                         </div>
                     </div>
@@ -1439,35 +1439,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                 </table>
             </div>"""
     
-    # Add status summary
-    if status_groups:
-        html += """
-            <div class="section">
-                <h2>Module Status Summary</h2>
-                <table class="module-table">
-                    <thead>
-                        <tr>
-                            <th>Status</th>
-                            <th>Count</th>
-                            <th>Percentage</th>
-                        </tr>
-                    </thead>
-                    <tbody>"""
-        
-        for status, count in status_groups.items():
-            percentage = (count / loadable_count) * 100 if loadable_count > 0 else 0
-            status_class = f"status-{status.lower()}"
-            html += f"""
-                        <tr>
-                            <td><span class="{status_class}">{status}</span></td>
-                            <td>{count}</td>
-                            <td>{percentage:.1f}%</td>
-                        </tr>"""
-        
-        html += """
-                    </tbody>
-                </table>
-            </div>"""
+    # Module Status Summary removed per request
     
     html += f"""
         </div>
