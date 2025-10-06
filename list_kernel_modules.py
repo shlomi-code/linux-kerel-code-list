@@ -319,13 +319,34 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
     
     # Try to enrich builtin metadata from modules.builtin.modinfo (authoritative during build)
     builtin_meta = parse_modules_builtin_modinfo()
+
+    def _lookup_meta_for(name: str) -> Dict[str, str]:
+        """Find metadata for a module name with tolerant matching.
+        Tries exact, dash/underscore variants, and case-insensitive match.
+        """
+        if name in builtin_meta:
+            return builtin_meta[name]
+        candidates = [
+            name.replace('-', '_'),
+            name.replace('_', '-'),
+            name.lower(),
+        ]
+        for cand in candidates:
+            if cand in builtin_meta:
+                return builtin_meta[cand]
+        # final: case-insensitive search across keys
+        lname = name.lower()
+        for k, v in builtin_meta.items():
+            if k.lower() == lname:
+                return v
+        return {}
     
     # Do not call external utilities; rely on build index only
     modinfo_index = {}
     
     # Create BuiltinModule objects with best-available metadata
     for name in module_names:
-        meta = builtin_meta.get(name, {})
+        meta = _lookup_meta_for(name)
         # Prefer build-index description; fallback to modinfo per-module if still empty
         desc = meta.get('description', '')
         # Prefer build-index license; fallback to modinfo per-module if still empty
