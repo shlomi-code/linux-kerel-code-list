@@ -297,30 +297,21 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
     # Try to enrich builtin metadata from modules.builtin.modinfo (authoritative during build)
     builtin_meta = parse_modules_builtin_modinfo()
     
-    # Fallback detailed info via modinfo (may be partial)
-    modinfo_modules = get_builtin_modules_from_modinfo()
-    modinfo_index = {m.name: m for m in modinfo_modules}
+    # Do not call external utilities; rely on build index only
+    modinfo_index = {}
     
     # Create BuiltinModule objects with best-available metadata
     for name in module_names:
         meta = builtin_meta.get(name, {})
-        if name in modinfo_index and not meta:
-            # Use modinfo-based object if no build-index metadata
-            builtin_modules.append(modinfo_index[name])
-            continue
         # Prefer build-index description; fallback to modinfo per-module if still empty
-        desc = meta.get('description', modinfo_index.get(name).description if name in modinfo_index else '')
-        if not desc:
-            desc = get_description_via_modinfo(name)
+        desc = meta.get('description', '')
         # Prefer build-index license; fallback to modinfo per-module if still empty
-        lic = meta.get('license', modinfo_index.get(name).license if name in modinfo_index else '')
-        if not lic:
-            lic = get_license_via_modinfo(name)
+        lic = meta.get('license', '')
         builtin_modules.append(BuiltinModule(
             name=name,
             description=desc,
-            version=meta.get('version', modinfo_index.get(name).version if name in modinfo_index else ''),
-            author=meta.get('author', modinfo_index.get(name).author if name in modinfo_index else ''),
+            version=meta.get('version', ''),
+            author=meta.get('author', ''),
             license=lic
         ))
     
@@ -379,23 +370,11 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
 
 
 def get_description_via_modinfo(module_name: str) -> str:
-    """Query `modinfo -F description <name>` even for builtin modules.
-    modinfo reads from modules.builtin.modinfo for builtins.
-    """
-    try:
-        result = subprocess.run(['modinfo', '-F', 'description', module_name], capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except Exception:
-        return ''
+    return ''
 
 
 def get_license_via_modinfo(module_name: str) -> str:
-    """Query `modinfo -F license <name>` for builtin modules license."""
-    try:
-        result = subprocess.run(['modinfo', '-F', 'license', module_name], capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except Exception:
-        return ''
+    return ''
 
 
 def get_module_file_path(module_name: str) -> str:
