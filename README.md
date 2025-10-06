@@ -1,160 +1,128 @@
 # Linux Kernel Module Lister
 
-A Python script that parses `/proc/modules` to list all currently loaded kernel modules (LKMs - Loadable Kernel Modules) on a Linux system.
+A fast, feature-rich tool to inspect Linux kernel modules. It parses `/proc/modules` and system metadata to produce readable CLI output and beautiful HTML reports—with sorting, search, summaries, signatures, and compact charts.
 
-## Overview
+## Key Features
 
-This script provides a comprehensive way to view all loaded kernel modules, including their size, reference count, dependencies, and status. It's an alternative to using the `lsmod` command-line utility, but with more detailed output and formatting options.
+- **Dual sources**: Lists currently loaded modules and discovers builtin and unloaded modules from `/lib/modules/<version>`.
+- **Multiple output formats**:
+  - CLI table (simple or detailed)
+  - JSON and CSV
+  - HTML report with modern styling
+- **Rich HTML report**:
+  - System information summary and stats cards
+  - Loadable, Builtin, and Unloaded modules sections
+  - Search box, sortable headers, and collapsible sections
+  - Medium-sized overview bar chart (Loaded/Builtin/Unloaded)
+  - Privilege notice when not run as root
+- **Module metadata**:
+  - Size (human-readable), reference count, dependencies, status, address
+  - File path and description (via ELF `.modinfo` or `modinfo` fallback)
+- **Signature awareness (HTML CLI report)**:
+  - Signed column derives from ELF `.modinfo` keys and the "Module signature appended" marker
+  - Handles `.ko.zst` by temporary decompression (zstandard)
+- **Robustness**:
+  - Graceful error handling and safe fallbacks
+  - Works with or without elevated privileges (some addresses may be masked)
 
-## Features
+## Installation
 
-- **Simple List View**: Clean table format showing module name, size, reference count, and status
-- **Detailed View**: Comprehensive information including dependencies and memory addresses
-- **Human-readable Sizes**: Converts byte sizes to KB, MB, GB format
-- **Sorted Output**: Modules are alphabetically sorted for easy reading
-- **Error Handling**: Graceful handling of permission errors and missing files
-- **Command-line Options**: Flexible output formatting
+Python 3.8+ recommended.
+
+Optional dependencies for enhanced features:
+
+```bash
+pip install pyelftools zstandard
+```
+
+These enable ELF parsing and `.ko.zst` decompression for descriptions and signature detection.
 
 ## Usage
 
-### Basic Usage
+### Basic
 ```bash
 python3 list_kernel_modules.py
 ```
 
-### Detailed Information
+### Detailed CLI view
 ```bash
 python3 list_kernel_modules.py --detailed
 ```
 
-### Show Only Count
+### Include builtin modules or show only builtin
+```bash
+python3 list_kernel_modules.py --builtin
+python3 list_kernel_modules.py --builtin-only
+```
+
+### Counts only
 ```bash
 python3 list_kernel_modules.py --count
 ```
 
-### Help
+### Filtering and sorting
 ```bash
-python3 list_kernel_modules.py --help
+# Wildcard filter
+python3 list_kernel_modules.py --filter "snd*"
+
+# Size and references
+python3 list_kernel_modules.py --min-size 50000 --min-refs 2
+
+# Sort by size descending
+python3 list_kernel_modules.py --sort size --reverse
 ```
 
-## Example Output
+### Export formats
+```bash
+# JSON
+python3 list_kernel_modules.py --json > modules.json
 
-### Simple List
-```
-Loaded Kernel Modules (45 total)
-============================================================
-Module Name               Size       Ref Count  Status    
-------------------------------------------------------------
-acpi_cpufreq             20480      0          Live      
-ahci                     45056      2          Live      
-ata_generic              16384      0          Live      
-...
+# CSV
+python3 list_kernel_modules.py --csv > modules.csv
+
+# HTML (recommended)
+python3 list_kernel_modules.py --html -o report.html
 ```
 
-### Detailed View
-```
-Loaded Kernel Modules (45 total)
-============================================================
-1. Module: acpi_cpufreq
-  Size: 20480 bytes
-  Reference Count: 0
-  Dependencies: None
-  Status: Live
-  Address: 0xffffffffc1234000
+The HTML report includes system info, statistics, searchable/sortable tables for Loadable, Builtin, and Unloaded modules, and a medium-sized bar chart summarizing module counts.
 
-2. Module: ahci
-  Size: 45056 bytes
-  Reference Count: 2
-  Dependencies: libahci
-  Status: Live
-  Address: 0xffffffffc1245000
-...
-```
+## How it works (high level)
 
-## How It Works
-
-The script reads from `/proc/modules`, which is a virtual file that contains information about all currently loaded kernel modules. The format of each line in `/proc/modules` is:
-
-```
-module_name size ref_count dependencies status address
-```
-
-Where:
-- **module_name**: Name of the kernel module
-- **size**: Size of the module in bytes
-- **ref_count**: Number of references to this module
-- **dependencies**: Comma-separated list of modules this module depends on (or "-" if none)
-- **status**: Module status (usually "Live")
-- **address**: Memory address where the module is loaded
+- Parses `/proc/modules` for actively loaded modules.
+- Uses kernel paths under `/lib/modules/<version>` to find builtin and unloaded modules.
+- Extracts metadata from ELF `.modinfo` (via `pyelftools`) and falls back to `modinfo` as needed.
+- Detects signatures by checking `.modinfo` keys and looking for the "Module signature appended" trailer; supports `.ko.zst` via `zstandard`.
 
 ## Requirements
 
-- Python 3.6 or higher
-- Linux system with `/proc/modules` available
-- Read permissions for `/proc/modules`
+- Linux system with `/proc/modules`
+- Python 3.8+
+- Optional: `pyelftools`, `zstandard` for richer metadata and compressed modules
 
-## Testing
+## Tips and caveats
 
-The project includes comprehensive unit tests that verify the script's output matches the standard `lsmod` command. The tests ensure:
+- Running as non-root may mask or hide some kernel addresses; the HTML report displays a notice and continues.
+- Signature detection best-effort: absence of markers may show as "Unknown".
 
-- **Module names match exactly** between our script and `lsmod`
-- **Module sizes are consistent** (converted from bytes to human-readable format)
-- **Reference counts are identical**
-- **Dependencies are parsed correctly** (including handling of status markers like `[permanent]`)
-- **Output formatting is correct** for both simple and detailed views
-- **Command-line options work as expected**
+## Development and testing
 
-### Running Tests
-
+Run tests:
 ```bash
-# Run all tests
 python3 test_kernel_modules.py
-
-# Run with verbose output
-python3 test_kernel_modules.py -v
-
-# Run specific test class
-python3 -m unittest test_kernel_modules.TestKernelModuleLister
-
-# Run specific test method
-python3 -m unittest test_kernel_modules.TestKernelModuleLister.test_module_names_match_lsmod
 ```
 
-### Test Coverage
-
-The test suite includes:
-
-- **Unit Tests**: Test individual functions and parsing logic
-- **Integration Tests**: Compare full output between our script and `lsmod`
-- **Format Tests**: Verify output formatting and command-line options
-- **Error Handling**: Test graceful handling of permission errors and missing files
-
-### Test Files
-
-- `test_kernel_modules.py`: Comprehensive test suite with 11 test cases covering all functionality
-- Tests compare output against the standard `lsmod` command to ensure consistency
-- Includes both unit tests and integration tests for thorough coverage
-
-## About Loadable Kernel Modules (LKMs)
-
-Loadable Kernel Modules (LKMs) allow adding code to the Linux kernel without recompiling and linking the kernel binary. They are used for various purposes including:
-
-- Filesystem drivers
-- Device drivers
-- Network protocols
-- System utilities
-
-When compiling the Linux kernel, you can choose to incorporate modules as part of the kernel itself (built-in modules) or as separate `.ko` (kernel object) files. For already compiled kernels, modules can only be created as separate kernel object files that can be loaded using utilities like `insmod`.
+Useful targets:
+- Unit tests validate parsing and formatting
+- Integration tests compare results with `lsmod`
 
 ## References
 
-- [The Linux Concept Journey — Loadable Kernel Module (LKM)](https://medium.com/@boutnaru/the-linux-concept-journey-loadable-kernel-module-lkm-5eaa4db346a1) - Comprehensive article about Linux Loadable Kernel Modules
-- [Linux Module HOWTO](https://tldp.org/HOWTO/Module-HOWTO/x73.html) - Official documentation on kernel modules
-- [Kbuild Documentation - modules.builtin](https://www.kernel.org/doc/html/latest/kbuild/kbuild.html#modules-builtin) - Official Linux kernel documentation on builtin modules and build system
-- [insmod manual page](https://man7.org/linux/man-pages/man8/insmod.8.html) - Manual for loading kernel modules
-- [lsmod manual page](https://man7.org/linux/man-pages/man8/lsmod.8.html) - Manual for listing loaded modules
-- [proc manual page](https://man7.org/linux/man-pages/man5/proc.5.html) - Documentation for /proc filesystem
+- [Linux Module HOWTO](https://tldp.org/HOWTO/Module-HOWTO/x73.html)
+- [Kbuild: modules.builtin](https://www.kernel.org/doc/html/latest/kbuild/kbuild.html#modules-builtin)
+- [man: insmod](https://man7.org/linux/man-pages/man8/insmod.8.html)
+- [man: lsmod](https://man7.org/linux/man-pages/man8/lsmod.8.html)
+- [man: proc](https://man7.org/linux/man-pages/man5/proc.5.html)
 
 ## License
 
-This project is licensed under the same terms as the LICENSE file in this repository.
+See `LICENSE` in this repository.
