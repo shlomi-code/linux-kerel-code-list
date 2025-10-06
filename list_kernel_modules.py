@@ -332,30 +332,7 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
             return result
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             current: Dict[str, str] = {}
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line:
-                    # ignore empty lines; some distros don't use them as separators
-                    continue
-                if '=' not in line:
-                    continue
-                k, v = line.split('=', 1)
-                key = k.strip().lower()
-                val = v.strip()
-                # A new name= typically denotes start of a new module's block
-                if key == 'name' and current.get('name') and val != current.get('name'):
-                    name = current.get('name') or current.get('module')
-                    if name and name not in result:
-                        result[name] = {
-                            'description': current.get('description', ''),
-                            'version': current.get('version', ''),
-                            'author': current.get('author', ''),
-                            'license': current.get('license', ''),
-                        }
-                    current = {}
-                current[key] = val
-            # flush last seen module
-            if current:
+            def flush_current():
                 name = current.get('name') or current.get('module')
                 if name and name not in result:
                     result[name] = {
@@ -364,6 +341,27 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
                         'author': current.get('author', ''),
                         'license': deduplicate_license(current.get('license', '')),
                     }
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    # blank line can separate entries in some distros
+                    if current:
+                        flush_current()
+                        current = {}
+                    continue
+                if '=' not in line:
+                    continue
+                k, v = line.split('=', 1)
+                key = k.strip().lower()
+                val = v.strip()
+                # A new name= typically denotes start of a new module's block
+                if key == 'name' and current.get('name') and val != current.get('name'):
+                    flush_current()
+                    current = {}
+                current[key] = val
+            # flush last seen module
+            if current:
+                flush_current()
     except Exception as e:
         print(f"Warning: Error parsing modules.builtin.modinfo: {e}", file=sys.stderr)
     return result
