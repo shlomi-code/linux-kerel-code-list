@@ -306,7 +306,7 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
         # Prefer build-index description; fallback to modinfo per-module if still empty
         desc = meta.get('description', '')
         # Prefer build-index license; fallback to modinfo per-module if still empty
-        lic = meta.get('license', '')
+        lic = deduplicate_license(meta.get('license', ''))
         builtin_modules.append(BuiltinModule(
             name=name,
             description=desc,
@@ -362,7 +362,7 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
                         'description': current.get('description', ''),
                         'version': current.get('version', ''),
                         'author': current.get('author', ''),
-                        'license': current.get('license', ''),
+                        'license': deduplicate_license(current.get('license', '')),
                     }
     except Exception as e:
         print(f"Warning: Error parsing modules.builtin.modinfo: {e}", file=sys.stderr)
@@ -375,6 +375,28 @@ def get_description_via_modinfo(module_name: str) -> str:
 
 def get_license_via_modinfo(module_name: str) -> str:
     return ''
+
+
+def deduplicate_license(license_str: str) -> str:
+    """Remove duplicate license tokens while preserving order.
+    Splits on common separators (comma/semicolon/pipe). Does not split on '/'
+    to keep strings like 'Dual BSD/GPL' intact.
+    """
+    if not license_str:
+        return ''
+    cleaned = ' '.join(license_str.split())  # collapse whitespace
+    # If multiple entries separated by , ; |
+    import re
+    parts = [p.strip() for p in re.split(r"[;,|]+", cleaned) if p.strip()]
+    if not parts:
+        return cleaned
+    seen = set()
+    unique_parts = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            unique_parts.append(p)
+    return ', '.join(unique_parts)
 
 
 def get_module_file_path(module_name: str) -> str:
