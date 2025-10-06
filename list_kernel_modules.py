@@ -336,10 +336,17 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
             for raw_line in f:
                 line = raw_line.strip()
                 if not line:
-                    # end of block
+                    # ignore empty lines; some distros don't use them as separators
+                    continue
+                if '=' not in line:
+                    continue
+                k, v = line.split('=', 1)
+                key = k.strip().lower()
+                val = v.strip()
+                # A new name= typically denotes start of a new module's block
+                if key == 'name' and current.get('name') and val != current.get('name'):
                     name = current.get('name') or current.get('module')
-                    if name:
-                        # module names in kernel are typically lowercase without path
+                    if name and name not in result:
                         result[name] = {
                             'description': current.get('description', ''),
                             'version': current.get('version', ''),
@@ -347,16 +354,11 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
                             'license': current.get('license', ''),
                         }
                     current = {}
-                    continue
-                if '=' in line:
-                    k, v = line.split('=', 1)
-                    key = k.strip().lower()
-                    val = v.strip()
-                    current[key] = val
-            # handle last block if file does not end with blank line
+                current[key] = val
+            # flush last seen module
             if current:
                 name = current.get('name') or current.get('module')
-                if name:
+                if name and name not in result:
                     result[name] = {
                         'description': current.get('description', ''),
                         'version': current.get('version', ''),
