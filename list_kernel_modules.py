@@ -15,6 +15,8 @@ import json
 import csv
 import fnmatch
 import tempfile
+import atexit
+import shutil
 import glob
 from typing import List, Dict, Optional, Set, Union
 
@@ -29,6 +31,27 @@ try:
     ZSTD_AVAILABLE = True
 except ImportError:
     ZSTD_AVAILABLE = False
+
+
+# Managed temporary working directory for .ko.zst decompression
+_TEMP_WORK_DIR: Optional[str] = None
+
+
+def _ensure_temp_work_dir() -> str:
+    """Create a dedicated temp directory under /tmp once per run and register cleanup."""
+    global _TEMP_WORK_DIR
+    if _TEMP_WORK_DIR is None:
+        _TEMP_WORK_DIR = tempfile.mkdtemp(prefix='kmod_tmp_')
+
+        def _cleanup_tmp_dir():
+            try:
+                if _TEMP_WORK_DIR and os.path.exists(_TEMP_WORK_DIR):
+                    shutil.rmtree(_TEMP_WORK_DIR, ignore_errors=True)
+            except Exception:
+                pass
+
+        atexit.register(_cleanup_tmp_dir)
+    return _TEMP_WORK_DIR
 
 
 class KernelModule:
@@ -575,7 +598,7 @@ def is_module_signed_from_file(file_path: str) -> Optional[bool]:
         if file_path.endswith('.ko.zst'):
             if not ZSTD_AVAILABLE:
                 return None
-            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False, dir=_ensure_temp_work_dir()) as temp_file:
                 temp_path = temp_file.name
                 try:
                     with open(file_path, 'rb') as compressed_file:
@@ -622,7 +645,8 @@ def extract_from_compressed_elf(file_path: str) -> str:
     
     try:
         # Decompress the file to a temporary location
-        with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False, dir=_ensure_temp_work_dir()) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix='.ko', delete=False, dir=_ensure_temp_work_dir()) as temp_file:
             temp_path = temp_file.name
             
             # Decompress using zstandard
