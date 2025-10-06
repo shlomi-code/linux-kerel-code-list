@@ -772,7 +772,6 @@ class HTMLFormatter(BaseFormatter):
                         <tr>
                             <th>Name</th>
                             <th>Description</th>
-                            <th>License</th>
                         </tr>
                         </thead>
                         <tbody>"""
@@ -782,7 +781,6 @@ class HTMLFormatter(BaseFormatter):
                             <tr>
                                 <td><strong>{module.name}</strong></td>
                                 <td>{module.description or 'N/A'}</td>
-                                <td>{module.license or 'N/A'}</td>
                             </tr>"""
             
             html += """

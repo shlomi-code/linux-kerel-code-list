@@ -1591,7 +1591,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                         <tr>
                             <th>Name</th>
                             <th>Description</th>
-                            <th>License</th>
                         </tr>
                     </thead>
                     <tbody>"""
@@ -1601,7 +1600,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <tr>
                                 <td><strong>{module.name}</strong></td>
                                 <td class="description">{module.description or 'N/A'}</td>
-                                <td>{module.license or 'N/A'}</td>
                             </tr>"""
         
         html += """
