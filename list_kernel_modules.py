@@ -1440,10 +1440,10 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             </div>
             <div class="section">
                 <h2>Descriptive Analysis</h2>
-                <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
-                    <div style="flex:0 0 auto; width:480px; height:240px;">
+                <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; justify-content:center;">
+                    <div style="flex:0 0 auto; width:960px; height:480px;">
                         <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Modules Overview</h3>
-                        <div style="position:relative; width:100%; height:200px;">
+                        <div style="position:relative; width:100%; height:400px;">
                             <canvas id="overviewChart"></canvas>
                         </div>
                     </div>
