@@ -308,9 +308,13 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
             # Use modinfo-based object if no build-index metadata
             builtin_modules.append(modinfo_index[name])
             continue
+        # Prefer build-index description; fallback to modinfo per-module if still empty
+        desc = meta.get('description', modinfo_index.get(name).description if name in modinfo_index else '')
+        if not desc:
+            desc = get_description_via_modinfo(name)
         builtin_modules.append(BuiltinModule(
             name=name,
-            description=meta.get('description', modinfo_index.get(name).description if name in modinfo_index else ''),
+            description=desc,
             version=meta.get('version', modinfo_index.get(name).version if name in modinfo_index else ''),
             author=meta.get('author', modinfo_index.get(name).author if name in modinfo_index else ''),
             license=meta.get('license', modinfo_index.get(name).license if name in modinfo_index else '')
@@ -368,6 +372,17 @@ def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
     except Exception as e:
         print(f"Warning: Error parsing modules.builtin.modinfo: {e}", file=sys.stderr)
     return result
+
+
+def get_description_via_modinfo(module_name: str) -> str:
+    """Query `modinfo -F description <name>` even for builtin modules.
+    modinfo reads from modules.builtin.modinfo for builtins.
+    """
+    try:
+        result = subprocess.run(['modinfo', '-F', 'description', module_name], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except Exception:
+        return ''
 
 
 def get_module_file_path(module_name: str) -> str:
