@@ -954,26 +954,8 @@ def get_module_description_from_file(file_path: str) -> str:
         str: Module description, or empty string if not found
     """
     try:
-        # Handle compressed modules
-        if file_path.endswith('.ko.zst'):
-            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
-                temp_path = temp_file.name
-                
-                with open(file_path, 'rb') as compressed_file:
-                    dctx = zstd.ZstdDecompressor()
-                    with dctx.stream_reader(compressed_file) as reader:
-                        temp_file.write(reader.read())
-                
-                # Extract description from decompressed file
-                description = extract_description_from_elf_file(temp_path)
-                
-                # Clean up temporary file
-                os.unlink(temp_path)
-                
-                return description
-        else:
-            return extract_description_from_elf_file(file_path)
-            
+        # Reuse the same ELF-based extractor used for loaded modules
+        return extract_description_from_elf(file_path)
     except Exception:
         return ""
 
@@ -1162,6 +1144,11 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             padding: 12px;
             border-bottom: 1px solid #e2e8f0;
             border-right: 1px solid #e2e8f0;
+        }}
+        .module-table td.description {{
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }}
         .module-table td:last-child {{
             border-right: none;
@@ -1474,7 +1461,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <td>{module.ref_count}</td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
                             <td><code>{file_path}</code></td>
-                            <td>{description}</td>
+                            <td class="description">{description}</td>
                             <td>{module.signed}</td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
@@ -1503,7 +1490,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             html += f"""
                             <tr>
                                 <td><strong>{module.name}</strong></td>
-                                <td>{module.description or 'N/A'}</td>
+                                <td class="description">{module.description or 'N/A'}</td>
                                 <td>{module.license or 'N/A'}</td>
                             </tr>"""
         
@@ -1536,7 +1523,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <td><strong>{module['name']}</strong></td>
                             <td>{format_size(module['size'])}</td>
                             <td><code>{file_path}</code></td>
-                            <td>{description}</td>
+                            <td class="description">{description}</td>
                         </tr>"""
         
         html += """
