@@ -312,12 +312,16 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
         desc = meta.get('description', modinfo_index.get(name).description if name in modinfo_index else '')
         if not desc:
             desc = get_description_via_modinfo(name)
+        # Prefer build-index license; fallback to modinfo per-module if still empty
+        lic = meta.get('license', modinfo_index.get(name).license if name in modinfo_index else '')
+        if not lic:
+            lic = get_license_via_modinfo(name)
         builtin_modules.append(BuiltinModule(
             name=name,
             description=desc,
             version=meta.get('version', modinfo_index.get(name).version if name in modinfo_index else ''),
             author=meta.get('author', modinfo_index.get(name).author if name in modinfo_index else ''),
-            license=meta.get('license', modinfo_index.get(name).license if name in modinfo_index else '')
+            license=lic
         ))
     
     return builtin_modules
@@ -380,6 +384,15 @@ def get_description_via_modinfo(module_name: str) -> str:
     """
     try:
         result = subprocess.run(['modinfo', '-F', 'description', module_name], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except Exception:
+        return ''
+
+
+def get_license_via_modinfo(module_name: str) -> str:
+    """Query `modinfo -F license <name>` for builtin modules license."""
+    try:
+        result = subprocess.run(['modinfo', '-F', 'license', module_name], capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except Exception:
         return ''
@@ -1460,8 +1473,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                         <tr>
                             <th>Name</th>
                             <th>Description</th>
-                            <th>Version</th>
-                            <th>Author</th>
                             <th>License</th>
                         </tr>
                     </thead>
@@ -1472,8 +1483,6 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <tr>
                                 <td><strong>{module.name}</strong></td>
                                 <td>{module.description or 'N/A'}</td>
-                                <td>{module.version or 'N/A'}</td>
-                                <td>{module.author or 'N/A'}</td>
                                 <td>{module.license or 'N/A'}</td>
                             </tr>"""
         

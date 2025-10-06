@@ -772,8 +772,6 @@ class HTMLFormatter(BaseFormatter):
                         <tr>
                             <th>Name</th>
                             <th>Description</th>
-                            <th>Version</th>
-                            <th>Author</th>
                             <th>License</th>
                         </tr>
                         </thead>
@@ -784,8 +782,6 @@ class HTMLFormatter(BaseFormatter):
                             <tr>
                                 <td><strong>{module.name}</strong></td>
                                 <td>{module.description or 'N/A'}</td>
-                                <td>{module.version or 'N/A'}</td>
-                                <td>{module.author or 'N/A'}</td>
                                 <td>{module.license or 'N/A'}</td>
                             </tr>"""
             
