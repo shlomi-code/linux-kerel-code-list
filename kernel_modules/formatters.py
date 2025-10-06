@@ -515,6 +515,7 @@ class HTMLFormatter(BaseFormatter):
             margin: 0 0 20px 0;
         }}
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         function searchModules() {{
             const input = document.getElementById('searchInput');
@@ -624,10 +625,30 @@ class HTMLFormatter(BaseFormatter):
             }});
         }}
         
-        // Initialize sorting and collapsible when page loads
+        // Initialize sorting, collapsible, and charts when page loads
         document.addEventListener('DOMContentLoaded', () => {{
             makeSortable();
             makeCollapsible();
+            try {{
+                const statusCtx = document.getElementById('statusChart');
+                if (statusCtx) {{
+                    new Chart(statusCtx, {{
+                        type: 'doughnut',
+                        data: {{
+                            labels: {list(status_groups.keys())},
+                            datasets: [{{
+                                data: {list(status_groups.values())},
+                                backgroundColor: ['#10b981','#ef4444','#f59e0b','#3b82f6','#8b5cf6','#14b8a6']
+                            }}]
+                        }},
+                        options: {{
+                            plugins: {{ legend: {{ position: 'bottom' }} }}
+                        }}
+                    }});
+                }}
+            }} catch (e) {{
+                // no-op
+            }}
         }});
     </script>
 </head>
@@ -642,6 +663,15 @@ class HTMLFormatter(BaseFormatter):
             <div class="stat-card">
                 <div class="stat-number">{total_count}</div>
                 <div class="stat-label">Loaded Modules</div>
+            </div>
+            <div class="section">
+                <h2>Descriptive Analysis</h2>
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+                    <div style="flex:1; min-width:280px;">
+                        <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Module Status Distribution</h3>
+                        <canvas id="statusChart" height="160"></canvas>
+                    </div>
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">{loadable_count}</div>

@@ -902,12 +902,16 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
     
     # Group modules by status
     status_groups = {}
+    # Group modules by signed status (Yes/No/Unknown)
+    signed_groups = { 'Yes': 0, 'No': 0, 'Unknown': 0 }
     for module in modules:
         if isinstance(module, KernelModule):
             status = module.status
             if status not in status_groups:
                 status_groups[status] = 0
             status_groups[status] += 1
+            if hasattr(module, 'signed'):
+                signed_groups[module.signed] = signed_groups.get(module.signed, 0) + 1
     
     # Generate HTML
     html = f"""<!DOCTYPE html>
@@ -1133,6 +1137,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             margin: 5px 0;
         }}
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         function searchModules() {{
             const input = document.getElementById('searchInput');
@@ -1242,10 +1247,50 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             }});
         }}
         
-        // Initialize sorting and collapsible when page loads
+        // Initialize sorting, collapsible and charts when page loads
         document.addEventListener('DOMContentLoaded', () => {{
             makeSortable();
             makeCollapsible();
+            try {{
+                const statusCtx = document.getElementById('statusChart');
+                if (statusCtx) {{
+                    new Chart(statusCtx, {{
+                        type: 'doughnut',
+                        data: {{
+                            labels: {list(status_groups.keys())},
+                            datasets: [{{
+                                data: {list(status_groups.values())},
+                                backgroundColor: ['#10b981','#ef4444','#f59e0b','#3b82f6','#8b5cf6','#14b8a6']
+                            }}]
+                        }},
+                        options: {{
+                            plugins: {{
+                                legend: {{ position: 'bottom' }}
+                            }}
+                        }}
+                    }});
+                }}
+                const signedCtx = document.getElementById('signedChart');
+                if (signedCtx) {{
+                    new Chart(signedCtx, {{
+                        type: 'pie',
+                        data: {{
+                            labels: ['Yes','No','Unknown'],
+                            datasets: [{{
+                                data: [{signed_groups['Yes']}, {signed_groups['No']}, {signed_groups['Unknown']}],
+                                backgroundColor: ['#10b981','#ef4444','#94a3b8']
+                            }}]
+                        }},
+                        options: {{
+                            plugins: {{
+                                legend: {{ position: 'bottom' }}
+                            }}
+                        }}
+                    }});
+                }}
+            }} catch (e) {{
+                // no-op
+            }}
         }});
     </script>
 </head>
@@ -1289,6 +1334,19 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                     <li><strong>Processor:</strong> {system_info['processor']}</li>
                     <li><strong>Report Generated:</strong> {system_info['timestamp']}</li>
                 </ul>
+            </div>
+            <div class="section">
+                <h2>Descriptive Analysis</h2>
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+                    <div style="flex:1; min-width:280px;">
+                        <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Module Status Distribution</h3>
+                        <canvas id="statusChart" height="160"></canvas>
+                    </div>
+                    <div style="flex:1; min-width:280px;">
+                        <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Signature Status (Signed)</h3>
+                        <canvas id="signedChart" height="160"></canvas>
+                    </div>
+                </div>
             </div>
             
             <div class="search-box">
