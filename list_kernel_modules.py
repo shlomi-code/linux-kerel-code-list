@@ -14,7 +14,21 @@ import re
 import json
 import csv
 import fnmatch
+import tempfile
+import glob
 from typing import List, Dict, Optional, Set, Union
+
+try:
+    from elftools.elf.elffile import ELFFile
+    ELF_TOOLS_AVAILABLE = True
+except ImportError:
+    ELF_TOOLS_AVAILABLE = False
+
+try:
+    import zstandard as zstd
+    ZSTD_AVAILABLE = True
+except ImportError:
+    ZSTD_AVAILABLE = False
 
 
 class KernelModule:
@@ -22,7 +36,7 @@ class KernelModule:
     
     def __init__(self, name: str, size: int, ref_count: int, 
                  dependencies: List[str], status: str, address: str, 
-                 module_type: str = "loadable", file_path: str = ""):
+                 module_type: str = "loadable", file_path: str = "", description: str = ""):
         self.name = name
         self.size = size
         self.ref_count = ref_count
@@ -30,18 +44,21 @@ class KernelModule:
         self.status = status
         self.address = address
         self.module_type = module_type
-        self.file_path = file_path  # "loadable" or "builtin"
+        self.file_path = file_path
+        self.description = description
     
     def __str__(self) -> str:
         deps_str = ", ".join(self.dependencies) if self.dependencies else "None"
         file_path_str = self.file_path if self.file_path else "N/A"
+        description_str = self.description if self.description else "N/A"
         return (f"Module: {self.name} ({self.module_type})\n"
                 f"  Size: {self.size} bytes\n"
                 f"  Reference Count: {self.ref_count}\n"
                 f"  Dependencies: {deps_str}\n"
                 f"  Status: {self.status}\n"
                 f"  Address: {self.address}\n"
-                f"  File Path: {file_path_str}\n")
+                f"  File Path: {file_path_str}\n"
+                f"  Description: {description_str}\n")
 
 
 class BuiltinModule:
@@ -310,6 +327,124 @@ def get_module_file_path(module_name: str) -> str:
         return ""
 
 
+def get_module_description(module_name: str) -> str:
+    """
+    Get the description of a kernel module by parsing the ELF file.
+    
+    Args:
+        module_name: Name of the module
+        
+    Returns:
+        str: Module description, or empty string if not found
+    """
+    # First try to get the file path
+    file_path = get_module_file_path(module_name)
+    if not file_path:
+        return ""
+    
+    # Try ELF parsing first if available
+    if ELF_TOOLS_AVAILABLE:
+        description = extract_description_from_elf(file_path)
+        if description:
+            return description
+    
+    # Fallback to modinfo if ELF parsing fails or is not available
+    try:
+        result = subprocess.run(['modinfo', '-F', 'description', module_name], 
+                              capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""
+
+
+def extract_description_from_elf(file_path: str) -> str:
+    """
+    Extract module description from ELF file by parsing the .modinfo section.
+    
+    Args:
+        file_path: Path to the kernel module file
+        
+    Returns:
+        str: Module description, or empty string if not found
+    """
+    try:
+        # Handle compressed modules
+        if file_path.endswith('.ko.zst'):
+            return extract_from_compressed_elf(file_path)
+        else:
+            return extract_from_elf_file(file_path)
+    except Exception as e:
+        print(f"Warning: Error parsing ELF file {file_path}: {e}", file=sys.stderr)
+        return ""
+
+
+def extract_from_elf_file(file_path: str) -> str:
+    """
+    Extract description from uncompressed ELF file.
+    
+    Args:
+        file_path: Path to the .ko file
+        
+    Returns:
+        str: Module description, or empty string if not found
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            elf = ELFFile(f)
+            modinfo_section = elf.get_section_by_name('.modinfo')
+            if not modinfo_section:
+                return ""
+            
+            modinfo_data = modinfo_section.data()
+            modinfo_strings = modinfo_data.split(b'\x00')
+            
+            for entry in modinfo_strings:
+                if entry.startswith(b'description='):
+                    return entry.split(b'=', 1)[1].decode('utf-8', errors='ignore')
+            
+            return ""
+    except Exception as e:
+        print(f"Warning: Error reading ELF file {file_path}: {e}", file=sys.stderr)
+        return ""
+
+
+def extract_from_compressed_elf(file_path: str) -> str:
+    """
+    Extract description from compressed .ko.zst file.
+    
+    Args:
+        file_path: Path to the .ko.zst file
+        
+    Returns:
+        str: Module description, or empty string if not found
+    """
+    if not ZSTD_AVAILABLE:
+        print("Warning: zstandard library not available for decompressing .ko.zst files", file=sys.stderr)
+        return ""
+    
+    try:
+        # Decompress the file to a temporary location
+        with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+            temp_path = temp_file.name
+            
+            # Decompress using zstandard
+            with open(file_path, 'rb') as compressed_file:
+                dctx = zstd.ZstdDecompressor()
+                with dctx.stream_reader(compressed_file) as reader:
+                    temp_file.write(reader.read())
+            
+            # Extract description from decompressed file
+            description = extract_from_elf_file(temp_path)
+            
+            # Clean up temporary file
+            os.unlink(temp_path)
+            
+            return description
+    except Exception as e:
+        print(f"Warning: Error decompressing {file_path}: {e}", file=sys.stderr)
+        return ""
+
+
 def parse_proc_modules() -> List[KernelModule]:
     """
     Parse /proc/modules file and return a list of KernelModule objects.
@@ -352,9 +487,10 @@ def parse_proc_modules() -> List[KernelModule]:
                 status = parts[4]
                 address = parts[5]
                 
-                # Get file path using modinfo
+                # Get file path and description using modinfo
                 file_path = get_module_file_path(name)
-                module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path)
+                description = get_module_description(name)
+                module = KernelModule(name, size, ref_count, dependencies, status, address, "loadable", file_path, description)
                 modules.append(module)
                 
     except FileNotFoundError:
@@ -472,7 +608,8 @@ def modules_to_json(modules: List[Union[KernelModule, BuiltinModule]],
                 'status': module.status,
                 'address': module.address,
                 'type': module.module_type,
-                'file_path': module.file_path
+                'file_path': module.file_path,
+                'description': module.description
             })
         else:
             data['builtin_modules'].append({
@@ -519,7 +656,7 @@ def modules_to_csv(modules: List[Union[KernelModule, BuiltinModule]],
                 module.status,
                 ','.join(module.dependencies) if module.dependencies else '',
                 module.file_path or 'N/A',
-                ''
+                module.description or 'N/A'
             ])
     
     # Write builtin modules
@@ -537,6 +674,108 @@ def modules_to_csv(modules: List[Union[KernelModule, BuiltinModule]],
             ])
     
     return output.getvalue()
+
+
+def get_unloaded_modules(loaded_modules: List[KernelModule]) -> List[Dict]:
+    """
+    Get list of unloaded kernel modules from the current kernel version.
+    
+    Args:
+        loaded_modules: List of currently loaded modules
+        
+    Returns:
+        List of dictionaries containing unloaded module information
+    """
+    unloaded_modules = []
+    
+    try:
+        # Get current kernel version
+        kernel_version = os.uname().release
+        modules_dir = f'/lib/modules/{kernel_version}'
+        
+        if not os.path.exists(modules_dir):
+            return unloaded_modules
+        
+        # Get list of loaded module names
+        loaded_names = {module.name for module in loaded_modules}
+        
+        # Find all .ko and .ko.zst files
+        ko_patterns = [
+            f'{modules_dir}/**/*.ko',
+            f'{modules_dir}/**/*.ko.zst'
+        ]
+        
+        for pattern in ko_patterns:
+            for file_path in glob.glob(pattern, recursive=True):
+                # Extract module name from file path
+                module_name = os.path.basename(file_path)
+                if module_name.endswith('.ko.zst'):
+                    module_name = module_name[:-7]  # Remove .ko.zst
+                elif module_name.endswith('.ko'):
+                    module_name = module_name[:-3]  # Remove .ko
+                
+                # Skip if module is already loaded
+                if module_name in loaded_names:
+                    continue
+                
+                # Get file size
+                try:
+                    file_size = os.path.getsize(file_path)
+                except OSError:
+                    file_size = 0
+                
+                # Get description using ELF parsing
+                description = get_module_description_from_file(file_path)
+                
+                unloaded_modules.append({
+                    'name': module_name,
+                    'file_path': file_path,
+                    'size': file_size,
+                    'description': description
+                })
+        
+        # Sort by module name
+        unloaded_modules.sort(key=lambda x: x['name'])
+        
+    except Exception as e:
+        print(f"Warning: Error getting unloaded modules: {e}", file=sys.stderr)
+    
+    return unloaded_modules
+
+
+def get_module_description_from_file(file_path: str) -> str:
+    """
+    Get module description from ELF file.
+    
+    Args:
+        file_path: Path to the module file
+        
+    Returns:
+        str: Module description, or empty string if not found
+    """
+    try:
+        # Handle compressed modules
+        if file_path.endswith('.ko.zst'):
+            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+                temp_path = temp_file.name
+                
+                with open(file_path, 'rb') as compressed_file:
+                    dctx = zstd.ZstdDecompressor()
+                    with dctx.stream_reader(compressed_file) as reader:
+                        temp_file.write(reader.read())
+                
+                # Extract description from decompressed file
+                description = extract_description_from_elf_file(temp_path)
+                
+                # Clean up temporary file
+                os.unlink(temp_path)
+                
+                return description
+        else:
+            return extract_description_from_elf_file(file_path)
+            
+    except Exception:
+        return ""
 
 
 def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]], 
@@ -560,6 +799,11 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
     # Calculate statistics
     loadable_count = len(modules)
     builtin_count = len(builtin_modules) if builtin_modules else 0
+    
+    # Get unloaded modules
+    unloaded_modules = get_unloaded_modules([m for m in modules if isinstance(m, KernelModule)])
+    unloaded_count = len(unloaded_modules)
+    
     total_count = loadable_count + builtin_count
     
     # Calculate total size
@@ -655,6 +899,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            border: 1px solid #cbd5e1;
         }}
         .module-table th {{
             background: #1e40af;
@@ -662,10 +907,18 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             padding: 12px;
             text-align: left;
             font-weight: 500;
+            border-right: 1px solid #3b82f6;
+        }}
+        .module-table th:last-child {{
+            border-right: none;
         }}
         .module-table td {{
             padding: 12px;
             border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+        }}
+        .module-table td:last-child {{
+            border-right: none;
         }}
         .module-table tr:nth-child(even) {{
             background: #f8fafc;
@@ -776,7 +1029,7 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         <div class="stats">
             <div class="stat-card">
                 <div class="stat-number">{total_count}</div>
-                <div class="stat-label">Total Modules</div>
+                <div class="stat-label">Loaded Modules</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">{loadable_count}</div>
@@ -785,6 +1038,10 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             <div class="stat-card">
                 <div class="stat-number">{builtin_count}</div>
                 <div class="stat-label">Builtin</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{unloaded_count}</div>
+                <div class="stat-label">Unloaded</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">{format_size(total_size)}</div>
@@ -817,9 +1074,9 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                             <th>Type</th>
                             <th>Size</th>
                             <th>Ref Count</th>
-                            <th>Status</th>
                             <th>Dependencies</th>
                             <th>File Path</th>
+                            <th>Description</th>
                             <th>Address</th>
                         </tr>
                     </thead>
@@ -829,17 +1086,17 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
     for module in modules:
         if isinstance(module, KernelModule):
             deps_str = ', '.join(module.dependencies) if module.dependencies else 'None'
-            status_class = f"status-{module.status.lower()}"
             file_path = module.file_path or 'N/A'
+            description = module.description or 'N/A'
             html += f"""
                         <tr>
                             <td><strong>{module.name}</strong></td>
                             <td><span class="module-type type-loadable">Loadable</span></td>
                             <td>{format_size(module.size)}</td>
                             <td>{module.ref_count}</td>
-                            <td><span class="{status_class}">{module.status}</span></td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
                             <td><code>{file_path}</code></td>
+                            <td>{description}</td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
     
@@ -868,13 +1125,47 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         
         for module in builtin_modules:
             html += f"""
+                            <tr>
+                                <td><strong>{module.name}</strong></td>
+                                <td><span class="module-type type-builtin">Builtin</span></td>
+                                <td>{module.description or 'N/A'}</td>
+                                <td>{module.version or 'N/A'}</td>
+                                <td>{module.author or 'N/A'}</td>
+                                <td>{module.license or 'N/A'}</td>
+                            </tr>"""
+        
+        html += """
+                    </tbody>
+                </table>
+            </div>"""
+    
+    # Add unloaded modules table
+    if unloaded_modules:
+        html += f"""
+            <div class="section">
+                <h2>Unloaded Kernel Modules ({unloaded_count})</h2>
+                <table class="module-table">
+                    <thead>
                         <tr>
-                            <td><strong>{module.name}</strong></td>
-                            <td><span class="module-type type-builtin">Builtin</span></td>
-                            <td>{module.description or 'N/A'}</td>
-                            <td>{module.version or 'N/A'}</td>
-                            <td>{module.author or 'N/A'}</td>
-                            <td>{module.license or 'N/A'}</td>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>File Path</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>"""
+        
+        for module in unloaded_modules:
+            file_path = module['file_path']
+            description = module['description'] or 'N/A'
+            html += f"""
+                        <tr>
+                            <td><strong>{module['name']}</strong></td>
+                            <td><span class="module-type type-loadable">Loadable</span></td>
+                            <td>{format_size(module['size'])}</td>
+                            <td><code>{file_path}</code></td>
+                            <td>{description}</td>
                         </tr>"""
         
         html += """
@@ -949,19 +1240,19 @@ def display_modules(modules: List[KernelModule], builtin_modules: List[BuiltinMo
     if not show_details:
         # Simple table format
         if not quiet:
-            print(f"{'Module Name':<25} {'Type':<10} {'Size':<10} {'Ref Count':<10} {'Status':<10} {'File Path':<50}")
-            print("-" * 120)
+            print(f"| {'Module Name':<25} | {'Type':<10} | {'Size':<10} | {'Ref Count':<10} | {'Status':<10} | {'Description':<50} |")
+            print("|" + "-" * 28 + "|" + "-" * 12 + "|" + "-" * 12 + "|" + "-" * 12 + "|" + "-" * 12 + "|" + "-" * 52 + "|")
         
         # Display loadable modules
         for module in modules:
             size_str = format_size(module.size)
-            file_path = module.file_path or 'N/A'
-            print(f"{module.name:<25} {'Loadable':<10} {size_str:<10} {module.ref_count:<10} {module.status:<10} {file_path:<50}")
+            description = module.description or 'N/A'
+            print(f"| {module.name:<25} | {'Loadable':<10} | {size_str:<10} | {module.ref_count:<10} | {module.status:<10} | {description:<50} |")
         
         # Display builtin modules if requested
         if show_builtin and builtin_modules:
             for module in builtin_modules:
-                print(f"{module.name:<25} {'Builtin':<10} {'N/A':<10} {'N/A':<10} {'Always':<10} {'N/A':<50}")
+                print(f"| {module.name:<25} | {'Builtin':<10} | {'N/A':<10} | {'N/A':<10} | {'Always':<10} | {module.description or 'N/A':<50} |")
     else:
         # Detailed format
         if not quiet:
