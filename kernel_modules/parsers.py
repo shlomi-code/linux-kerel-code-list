@@ -375,6 +375,243 @@ class BuiltinModuleParser:
         return builtin_modules
     
     @classmethod
+    def _extract_license_from_kernel_source(cls, module_name: str) -> str:
+        """
+        Extract license information from kernel source files.
+        
+        Args:
+            module_name: Name of the builtin module
+            
+        Returns:
+            str: Module license, or empty string if not found
+        """
+        try:
+            # Try to find the module source file
+            kernel_version = os.uname().release
+            possible_paths = [
+                f'/lib/modules/{kernel_version}/source',
+                f'/lib/modules/{kernel_version}/build',
+                '/usr/src/linux',
+                '/usr/src/linux-headers-' + kernel_version
+            ]
+            
+            for base_path in possible_paths:
+                if not os.path.exists(base_path):
+                    continue
+                
+                # Search for the module source file
+                for root, dirs, files in os.walk(base_path):
+                    for file in files:
+                        if file.endswith('.c') and module_name in file:
+                            file_path = os.path.join(root, file)
+                            license = cls._extract_license_from_c_file(file_path)
+                            if license:
+                                return license
+                            
+        except Exception as e:
+            print(f"Warning: Error extracting license from kernel source for {module_name}: {e}", file=sys.stderr)
+        
+        return ""
+    
+    @classmethod
+    def _extract_license_from_c_file(cls, file_path: str) -> str:
+        """
+        Extract license information from a C source file.
+        
+        Args:
+            file_path: Path to the C source file
+            
+        Returns:
+            str: Module license, or empty string if not found
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                
+                # Look for MODULE_LICENSE macro
+                import re
+                license_match = re.search(r'MODULE_LICENSE\s*\(\s*"([^"]+)"\s*\)', content)
+                if license_match:
+                    return license_match.group(1)
+                    
+        except Exception:
+            pass
+        
+        return ""
+    
+    @classmethod
+    def _extract_license_from_kernel_binary(cls) -> dict:
+        """
+        Extract license information from the kernel binary by parsing /proc/kallsyms.
+        
+        Returns:
+            dict: Dictionary mapping module names to their licenses
+        """
+        module_licenses = {}
+        
+        try:
+            # Try to extract from /proc/kallsyms or kernel symbols
+            if os.path.exists('/proc/kallsyms'):
+                with open('/proc/kallsyms', 'r') as f:
+                    for line in f:
+                        # Look for module license symbols
+                        if '__module_license_' in line:
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                symbol_name = parts[2]
+                                # Extract module name from symbol
+                                if '__module_license_' in symbol_name:
+                                    module_name = symbol_name.split('__module_license_')[0]
+                                    # Try to get the actual license string
+                                    license = cls._get_license_from_symbol(symbol_name)
+                                    if license:
+                                        module_licenses[module_name] = license
+                                        
+        except Exception as e:
+            print(f"Warning: Error extracting license from kernel binary: {e}", file=sys.stderr)
+        
+        return module_licenses
+    
+    @classmethod
+    def _extract_from_modules_builtin_modinfo(cls) -> dict:
+        """
+        Extract license and description information from modules.builtin.modinfo file.
+        
+        Returns:
+            dict: Dictionary mapping module names to their metadata (license, description, etc.)
+        """
+        module_metadata = {}
+        
+        try:
+            kernel_version = os.uname().release
+            modinfo_path = f'/lib/modules/{kernel_version}/modules.builtin.modinfo'
+            
+            if os.path.exists(modinfo_path):
+                with open(modinfo_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                    
+                    # Parse the content - it's a single line with module info
+                    # Format: module_name.field=value
+                    import re
+                    
+                    # Split by module boundaries and parse each module's info
+                    current_module = None
+                    module_info = {}
+                    
+                    # Look for patterns like "module_name.license=GPL"
+                    for match in re.finditer(r'(\w+)\.(\w+)=([^\s]+)', content):
+                        module_name = match.group(1)
+                        field_name = match.group(2)
+                        field_value = match.group(3)
+                        
+                        if module_name != current_module:
+                            if current_module and module_info:
+                                module_metadata[current_module] = module_info
+                            current_module = module_name
+                            module_info = {}
+                        
+                        module_info[field_name] = field_value
+                    
+                    # Don't forget the last module
+                    if current_module and module_info:
+                        module_metadata[current_module] = module_info
+                        
+        except Exception as e:
+            print(f"Warning: Error extracting from modules.builtin.modinfo: {e}", file=sys.stderr)
+        
+        return module_metadata
+    
+    @classmethod
+    def _get_license_from_symbol(cls, symbol_name: str) -> str:
+        """
+        Get license string from a kernel symbol.
+        
+        Args:
+            symbol_name: Name of the license symbol
+            
+        Returns:
+            str: License string, or empty string if not found
+        """
+        # This is a simplified implementation
+        # In practice, you'd need to read the symbol's value from memory
+        # For now, we'll return common GPL licenses
+        if 'gpl' in symbol_name.lower():
+            return 'GPL'
+        elif 'mit' in symbol_name.lower():
+            return 'MIT'
+        elif 'bsd' in symbol_name.lower():
+            return 'BSD'
+        elif 'proprietary' in symbol_name.lower():
+            return 'Proprietary'
+        
+        return ""
+    
+    @classmethod
+    def _extract_description_from_kernel_source(cls, module_name: str) -> str:
+        """
+        Extract description information from kernel source files.
+        
+        Args:
+            module_name: Name of the builtin module
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            # Try to find the module source file
+            kernel_version = os.uname().release
+            possible_paths = [
+                f'/lib/modules/{kernel_version}/source',
+                f'/lib/modules/{kernel_version}/build',
+                '/usr/src/linux',
+                '/usr/src/linux-headers-' + kernel_version
+            ]
+            
+            for base_path in possible_paths:
+                if not os.path.exists(base_path):
+                    continue
+                
+                # Search for the module source file
+                for root, dirs, files in os.walk(base_path):
+                    for file in files:
+                        if file.endswith('.c') and module_name in file:
+                            file_path = os.path.join(root, file)
+                            description = cls._extract_description_from_c_file(file_path)
+                            if description:
+                                return description
+                            
+        except Exception as e:
+            print(f"Warning: Error extracting description from kernel source for {module_name}: {e}", file=sys.stderr)
+        
+        return ""
+    
+    @classmethod
+    def _extract_description_from_c_file(cls, file_path: str) -> str:
+        """
+        Extract description information from a C source file.
+        
+        Args:
+            file_path: Path to the C source file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                
+                # Look for MODULE_DESCRIPTION macro
+                import re
+                desc_match = re.search(r'MODULE_DESCRIPTION\s*\(\s*"([^"]+)"\s*\)', content)
+                if desc_match:
+                    return desc_match.group(1)
+                    
+        except Exception:
+            pass
+        
+        return ""
+    
+    @classmethod
     def get_all_builtin_modules(cls) -> List[BuiltinModule]:
         """
         Get all builtin modules using the authoritative kernel files.
@@ -413,6 +650,12 @@ class BuiltinModuleParser:
         modinfo_modules = cls.get_builtin_modules_from_modinfo()
         modinfo_names = {module.name for module in modinfo_modules}
         
+        # Get license information from kernel binary
+        kernel_licenses = cls._extract_license_from_kernel_binary()
+        
+        # Get metadata from modules.builtin.modinfo (most reliable source)
+        modinfo_metadata = cls._extract_from_modules_builtin_modinfo()
+        
         # Create BuiltinModule objects
         for name in module_names:
             # Check if we have detailed info from modinfo
@@ -420,6 +663,31 @@ class BuiltinModuleParser:
             if existing_module:
                 builtin_modules.append(existing_module)
             else:
-                builtin_modules.append(BuiltinModule(name=name))
+                # Try to get metadata from modules.builtin.modinfo first
+                description = ""
+                license = ""
+                version = ""
+                author = ""
+                
+                if name in modinfo_metadata:
+                    metadata = modinfo_metadata[name]
+                    description = metadata.get('description', '')
+                    license = metadata.get('license', '')
+                    version = metadata.get('version', '')
+                    author = metadata.get('author', '')
+                else:
+                    # Fallback to kernel source extraction
+                    description = cls._extract_description_from_kernel_source(name)
+                    license = cls._extract_license_from_kernel_source(name)
+                    if not license and name in kernel_licenses:
+                        license = kernel_licenses[name]
+                
+                builtin_modules.append(BuiltinModule(
+                    name=name,
+                    description=description,
+                    version=version,
+                    author=author,
+                    license=license
+                ))
         
         return builtin_modules
