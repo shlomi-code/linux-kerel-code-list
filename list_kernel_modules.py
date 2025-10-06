@@ -645,7 +645,6 @@ def extract_from_compressed_elf(file_path: str) -> str:
     
     try:
         # Decompress the file to a temporary location
-            with tempfile.NamedTemporaryFile(suffix='.ko', delete=False, dir=_ensure_temp_work_dir()) as temp_file:
         with tempfile.NamedTemporaryFile(suffix='.ko', delete=False, dir=_ensure_temp_work_dir()) as temp_file:
             temp_path = temp_file.name
             
@@ -654,14 +653,14 @@ def extract_from_compressed_elf(file_path: str) -> str:
                 dctx = zstd.ZstdDecompressor()
                 with dctx.stream_reader(compressed_file) as reader:
                     temp_file.write(reader.read())
-            
-            # Extract description from decompressed file
-            description = extract_from_elf_file(temp_path)
-            
-            # Clean up temporary file
-            os.unlink(temp_path)
-            
-            return description
+        
+        # Extract description from decompressed file
+        description = extract_from_elf_file(temp_path)
+        
+        # Clean up temporary file
+        os.unlink(temp_path)
+        
+        return description
     except Exception as e:
         print(f"Warning: Error decompressing {file_path}: {e}", file=sys.stderr)
         return ""
