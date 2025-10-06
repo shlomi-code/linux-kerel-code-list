@@ -912,6 +912,27 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         .module-table th:last-child {{
             border-right: none;
         }}
+        .module-table th.sortable {{
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }}
+        .module-table th.sortable:hover {{
+            background: #3b82f6;
+        }}
+        .module-table th.sortable::after {{
+            content: ' ↕';
+            opacity: 0.5;
+            font-size: 0.8em;
+        }}
+        .module-table th.sortable.asc::after {{
+            content: ' ↑';
+            opacity: 1;
+        }}
+        .module-table th.sortable.desc::after {{
+            content: ' ↓';
+            opacity: 1;
+        }}
         .module-table td {{
             padding: 12px;
             border-bottom: 1px solid #e2e8f0;
@@ -1017,6 +1038,62 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                 }}
             }});
         }}
+        
+        function sortTable(table, column, isNumeric = false) {{
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const header = table.querySelectorAll('th')[column];
+            
+            // Remove existing sort classes
+            table.querySelectorAll('th').forEach(th => {{
+                th.classList.remove('asc', 'desc');
+            }});
+            
+            // Determine sort direction
+            const isAsc = !header.classList.contains('asc');
+            header.classList.add(isAsc ? 'asc' : 'desc');
+            
+            // Sort rows
+            rows.sort((a, b) => {{
+                const aVal = a.cells[column].textContent.trim();
+                const bVal = b.cells[column].textContent.trim();
+                
+                let comparison = 0;
+                if (isNumeric) {{
+                    const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, '')) || 0;
+                    const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, '')) || 0;
+                    comparison = aNum - bNum;
+                }} else {{
+                    comparison = aVal.localeCompare(bVal);
+                }}
+                
+                return isAsc ? comparison : -comparison;
+            }});
+            
+            // Re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+        }}
+        
+        function makeSortable() {{
+            const tables = document.querySelectorAll('.module-table');
+            tables.forEach(table => {{
+                const headers = table.querySelectorAll('th');
+                headers.forEach((header, index) => {{
+                    if (header.textContent.trim() !== '') {{
+                        header.classList.add('sortable');
+                        header.addEventListener('click', () => {{
+                            // Determine if column is numeric based on header text
+                            const numericColumns = ['Size', 'Ref Count', 'Count', 'Percentage'];
+                            const isNumeric = numericColumns.includes(header.textContent.trim());
+                            sortTable(table, index, isNumeric);
+                        }});
+                    }}
+                }});
+            }});
+        }}
+        
+        // Initialize sorting when page loads
+        document.addEventListener('DOMContentLoaded', makeSortable);
     </script>
 </head>
 <body>
@@ -1362,14 +1439,14 @@ Examples:
         
         # Get builtin modules if requested
         builtin_modules = None
-        if args.builtin or args.builtin_only:
+        if args.builtin or args.builtin_only or args.html:
             builtin_modules = get_all_builtin_modules()
         
         # Combine modules for processing
         all_modules = []
         if not args.builtin_only:
             all_modules.extend(loadable_modules)
-        if args.builtin or args.builtin_only:
+        if args.builtin or args.builtin_only or args.html:
             if builtin_modules:
                 all_modules.extend(builtin_modules)
         
