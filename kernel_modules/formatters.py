@@ -11,6 +11,7 @@ import io
 import datetime
 import platform
 import os
+import glob
 from typing import List, Dict, Union
 from .models import KernelModule, BuiltinModule
 
@@ -84,7 +85,7 @@ class CSVFormatter(BaseFormatter):
                     module.status,
                     ','.join(module.dependencies) if module.dependencies else '',
                     module.file_path or 'N/A',
-                    ''
+                    module.description or 'N/A'
                 ])
         
         # Write builtin modules
@@ -107,6 +108,143 @@ class CSVFormatter(BaseFormatter):
 class HTMLFormatter(BaseFormatter):
     """Formatter for HTML output with professional styling."""
     
+    @staticmethod
+    def _get_unloaded_modules(loaded_modules: List[KernelModule]) -> List[Dict]:
+        """
+        Get list of unloaded kernel modules from the current kernel version.
+        
+        Args:
+            loaded_modules: List of currently loaded modules
+            
+        Returns:
+            List of dictionaries containing unloaded module information
+        """
+        unloaded_modules = []
+        
+        try:
+            # Get current kernel version
+            kernel_version = os.uname().release
+            modules_dir = f'/lib/modules/{kernel_version}'
+            
+            if not os.path.exists(modules_dir):
+                return unloaded_modules
+            
+            # Get list of loaded module names
+            loaded_names = {module.name for module in loaded_modules}
+            
+            # Find all .ko and .ko.zst files
+            ko_patterns = [
+                f'{modules_dir}/**/*.ko',
+                f'{modules_dir}/**/*.ko.zst'
+            ]
+            
+            for pattern in ko_patterns:
+                for file_path in glob.glob(pattern, recursive=True):
+                    # Extract module name from file path
+                    module_name = os.path.basename(file_path)
+                    if module_name.endswith('.ko.zst'):
+                        module_name = module_name[:-7]  # Remove .ko.zst
+                    elif module_name.endswith('.ko'):
+                        module_name = module_name[:-3]  # Remove .ko
+                    
+                    # Skip if module is already loaded
+                    if module_name in loaded_names:
+                        continue
+                    
+                    # Get file size
+                    try:
+                        file_size = os.path.getsize(file_path)
+                    except OSError:
+                        file_size = 0
+                    
+                    # Get description using ELF parsing
+                    description = HTMLFormatter._get_module_description_from_file(file_path)
+                    
+                    unloaded_modules.append({
+                        'name': module_name,
+                        'file_path': file_path,
+                        'size': file_size,
+                        'description': description
+                    })
+            
+            # Sort by module name
+            unloaded_modules.sort(key=lambda x: x['name'])
+            
+        except Exception as e:
+            print(f"Warning: Error getting unloaded modules: {e}", file=sys.stderr)
+        
+        return unloaded_modules
+    
+    @staticmethod
+    def _get_module_description_from_file(file_path: str) -> str:
+        """
+        Get module description from ELF file.
+        
+        Args:
+            file_path: Path to the module file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            from elftools.elf.elffile import ELFFile
+            import tempfile
+            import zstandard as zstd
+            
+            # Handle compressed modules
+            if file_path.endswith('.ko.zst'):
+                with tempfile.NamedTemporaryFile(suffix='.ko', delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    
+                    with open(file_path, 'rb') as compressed_file:
+                        dctx = zstd.ZstdDecompressor()
+                        with dctx.stream_reader(compressed_file) as reader:
+                            temp_file.write(reader.read())
+                    
+                    # Extract description from decompressed file
+                    description = HTMLFormatter._extract_description_from_elf_file(temp_path)
+                    
+                    # Clean up temporary file
+                    os.unlink(temp_path)
+                    
+                    return description
+            else:
+                return HTMLFormatter._extract_description_from_elf_file(file_path)
+                
+        except Exception:
+            return ""
+    
+    @staticmethod
+    def _extract_description_from_elf_file(file_path: str) -> str:
+        """
+        Extract description from ELF file.
+        
+        Args:
+            file_path: Path to the .ko file
+            
+        Returns:
+            str: Module description, or empty string if not found
+        """
+        try:
+            from elftools.elf.elffile import ELFFile
+            
+            with open(file_path, 'rb') as f:
+                elf = ELFFile(f)
+                modinfo_section = elf.get_section_by_name('.modinfo')
+                if not modinfo_section:
+                    return ""
+                
+                modinfo_data = modinfo_section.data()
+                modinfo_strings = modinfo_data.split(b'\x00')
+                
+                for entry in modinfo_strings:
+                    if entry.startswith(b'description='):
+                        return entry.split(b'=', 1)[1].decode('utf-8', errors='ignore')
+                
+                return ""
+        except Exception:
+            return ""
+    
     def format(self, modules: List[Union[KernelModule, BuiltinModule]], 
                builtin_modules: List[BuiltinModule] = None,
                system_info: Dict = None) -> str:
@@ -126,6 +264,11 @@ class HTMLFormatter(BaseFormatter):
         # Calculate statistics
         loadable_count = len(modules)
         builtin_count = len(builtin_modules) if builtin_modules else 0
+        
+        # Get unloaded modules
+        unloaded_modules = self._get_unloaded_modules([m for m in modules if isinstance(m, KernelModule)])
+        unloaded_count = len(unloaded_modules)
+        
         total_count = loadable_count + builtin_count
         
         # Calculate total size
@@ -221,6 +364,7 @@ class HTMLFormatter(BaseFormatter):
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            border: 1px solid #cbd5e1;
         }}
         .module-table th {{
             background: #1e40af;
@@ -228,10 +372,18 @@ class HTMLFormatter(BaseFormatter):
             padding: 12px;
             text-align: left;
             font-weight: 500;
+            border-right: 1px solid #3b82f6;
+        }}
+        .module-table th:last-child {{
+            border-right: none;
         }}
         .module-table td {{
             padding: 12px;
             border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+        }}
+        .module-table td:last-child {{
+            border-right: none;
         }}
         .module-table tr:nth-child(even) {{
             background: #f8fafc;
@@ -350,7 +502,7 @@ class HTMLFormatter(BaseFormatter):
         <div class="stats">
             <div class="stat-card">
                 <div class="stat-number">{total_count}</div>
-                <div class="stat-label">Total Modules</div>
+                <div class="stat-label">Loaded Modules</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">{loadable_count}</div>
@@ -359,6 +511,10 @@ class HTMLFormatter(BaseFormatter):
             <div class="stat-card">
                 <div class="stat-number">{builtin_count}</div>
                 <div class="stat-label">Builtin</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{unloaded_count}</div>
+                <div class="stat-label">Unloaded</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number">{self._format_size(total_size)}</div>
@@ -398,9 +554,9 @@ class HTMLFormatter(BaseFormatter):
                             <th>Type</th>
                             <th>Size</th>
                             <th>Ref Count</th>
-                            <th>Status</th>
                             <th>Dependencies</th>
                             <th>File Path</th>
+                            <th>Description</th>
                             <th>Address</th>
                         </tr>
                     </thead>
@@ -410,17 +566,17 @@ class HTMLFormatter(BaseFormatter):
         for module in modules:
             if isinstance(module, KernelModule):
                 deps_str = ', '.join(module.dependencies) if module.dependencies else 'None'
-                status_class = f"status-{module.status.lower()}"
                 file_path = module.file_path or 'N/A'
+                description = module.description or 'N/A'
                 html += f"""
                         <tr>
                             <td><strong>{module.name}</strong></td>
                             <td><span class="module-type type-loadable">Loadable</span></td>
                             <td>{self._format_size(module.size)}</td>
                             <td>{module.ref_count}</td>
-                            <td><span class="{status_class}">{module.status}</span></td>
                             <td class="dependencies" title="{deps_str}">{deps_str}</td>
                             <td><code>{file_path}</code></td>
+                            <td>{description}</td>
                             <td><code>{module.address}</code></td>
                         </tr>"""
         
@@ -456,6 +612,40 @@ class HTMLFormatter(BaseFormatter):
                                 <td>{module.version or 'N/A'}</td>
                                 <td>{module.author or 'N/A'}</td>
                                 <td>{module.license or 'N/A'}</td>
+                            </tr>"""
+            
+            html += """
+                        </tbody>
+                    </table>
+                </div>"""
+        
+        # Add unloaded modules table
+        if unloaded_modules:
+            html += f"""
+                <div class="section">
+                    <h2>Unloaded Kernel Modules ({unloaded_count})</h2>
+                    <table class="module-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>File Path</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>"""
+            
+            for module in unloaded_modules:
+                file_path = module['file_path']
+                description = module['description'] or 'N/A'
+                html += f"""
+                            <tr>
+                                <td><strong>{module['name']}</strong></td>
+                                <td><span class="module-type type-loadable">Loadable</span></td>
+                                <td>{self._format_size(module['size'])}</td>
+                                <td><code>{file_path}</code></td>
+                                <td>{description}</td>
                             </tr>"""
             
             html += """
