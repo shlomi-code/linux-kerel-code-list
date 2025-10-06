@@ -1251,15 +1251,25 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
                 const ov = document.getElementById('overviewChart');
                 if (ov) {{
                     new Chart(ov, {{
-                        type: 'doughnut',
+                        type: 'bar',
                         data: {{
                             labels: ['Loaded', 'Builtin', 'Unloaded'],
                             datasets: [{{
                                 data: [{loadable_count}, {builtin_count}, {unloaded_count}],
-                                backgroundColor: ['#1e40af','#f59e0b','#94a3b8']
+                                backgroundColor: ['#1e40af','#f59e0b','#94a3b8'],
+                                maxBarThickness: 18,
+                                borderRadius: 4
                             }}]
                         }},
-                        options: {{ plugins: {{ legend: {{ position: 'bottom' }} }} }}
+                        options: {{
+                            maintainAspectRatio: false,
+                            plugins: {{ legend: {{ display: false }} }},
+                            scales: {{
+                                y: {{ beginAtZero: true, ticks: {{ precision: 0 }} }},
+                                x: {{ grid: {{ display: false }} }}
+                            }},
+                            layout: {{ padding: 0 }}
+                        }}
                     }});
                 }}
             }} catch (e) {{
@@ -1311,10 +1321,12 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             </div>
             <div class="section">
                 <h2>Descriptive Analysis</h2>
-                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
-                    <div style="flex:1; min-width:320px;">
+                <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+                    <div style="flex:0 0 auto; width:260px; height:140px;">
                         <h3 style="margin:0 0 8px 0; color:#0c4a6e;">Modules Overview</h3>
-                        <canvas id="overviewChart" height="180"></canvas>
+                        <div style="position:relative; width:100%; height:100px;">
+                            <canvas id="overviewChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
