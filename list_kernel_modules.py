@@ -294,20 +294,78 @@ def get_all_builtin_modules() -> List[BuiltinModule]:
         # Remove loadable modules from builtin detection to avoid false positives
         module_names = module_names - loadable_modules
     
-    # Get detailed module info from modinfo for builtin modules
-    modinfo_modules = get_builtin_modules_from_modinfo()
-    modinfo_names = {module.name for module in modinfo_modules}
+    # Try to enrich builtin metadata from modules.builtin.modinfo (authoritative during build)
+    builtin_meta = parse_modules_builtin_modinfo()
     
-    # Create BuiltinModule objects
+    # Fallback detailed info via modinfo (may be partial)
+    modinfo_modules = get_builtin_modules_from_modinfo()
+    modinfo_index = {m.name: m for m in modinfo_modules}
+    
+    # Create BuiltinModule objects with best-available metadata
     for name in module_names:
-        # Check if we have detailed info from modinfo
-        existing_module = next((m for m in modinfo_modules if m.name == name), None)
-        if existing_module:
-            builtin_modules.append(existing_module)
-        else:
-            builtin_modules.append(BuiltinModule(name=name))
+        meta = builtin_meta.get(name, {})
+        if name in modinfo_index and not meta:
+            # Use modinfo-based object if no build-index metadata
+            builtin_modules.append(modinfo_index[name])
+            continue
+        builtin_modules.append(BuiltinModule(
+            name=name,
+            description=meta.get('description', modinfo_index.get(name).description if name in modinfo_index else ''),
+            version=meta.get('version', modinfo_index.get(name).version if name in modinfo_index else ''),
+            author=meta.get('author', modinfo_index.get(name).author if name in modinfo_index else ''),
+            license=meta.get('license', modinfo_index.get(name).license if name in modinfo_index else '')
+        ))
     
     return builtin_modules
+
+
+def parse_modules_builtin_modinfo() -> Dict[str, Dict[str, str]]:
+    """
+    Parse /lib/modules/<version>/modules.builtin.modinfo for builtin modules metadata.
+    Returns mapping: module_name -> {'description','version','author','license'} when available.
+    The file is generated at build time by modpost, containing MODULE_* key=value pairs.
+    """
+    result: Dict[str, Dict[str, str]] = {}
+    try:
+        kernel_version = os.uname().release
+        path = f"/lib/modules/{kernel_version}/modules.builtin.modinfo"
+        if not os.path.exists(path):
+            return result
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            current: Dict[str, str] = {}
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    # end of block
+                    name = current.get('name') or current.get('module')
+                    if name:
+                        # module names in kernel are typically lowercase without path
+                        result[name] = {
+                            'description': current.get('description', ''),
+                            'version': current.get('version', ''),
+                            'author': current.get('author', ''),
+                            'license': current.get('license', ''),
+                        }
+                    current = {}
+                    continue
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    key = k.strip().lower()
+                    val = v.strip()
+                    current[key] = val
+            # handle last block if file does not end with blank line
+            if current:
+                name = current.get('name') or current.get('module')
+                if name:
+                    result[name] = {
+                        'description': current.get('description', ''),
+                        'version': current.get('version', ''),
+                        'author': current.get('author', ''),
+                        'license': current.get('license', ''),
+                    }
+    except Exception as e:
+        print(f"Warning: Error parsing modules.builtin.modinfo: {e}", file=sys.stderr)
+    return result
 
 
 def get_module_file_path(module_name: str) -> str:
