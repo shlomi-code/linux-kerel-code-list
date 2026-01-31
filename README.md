@@ -25,8 +25,9 @@ A comprehensive, feature-rich tool for inspecting Linux kernel modules. It parse
 ### 📈 **Rich HTML Reports**
 - **System information**: Hostname, kernel version, architecture, processor
 - **Statistics dashboard**: Module counts, total sizes, status breakdowns
+- **Overview pie chart**: Loaded / Builtin / Unloaded distribution
+- **Column selector**: List of column names before each table; checkboxes to show or hide columns
 - **Interactive tables**: Searchable, sortable, collapsible sections
-- **Visual charts**: Overview bar charts showing module distribution
 - **Responsive design**: Modern, professional styling with mobile support
 - **Privilege awareness**: Notifications when running without root privileges
 
@@ -41,6 +42,7 @@ A comprehensive, feature-rich tool for inspecting Linux kernel modules. It parse
 - **Dependencies**: Module dependency chains and relationships
 - **File paths**: Full paths to module files (`.ko` or `.ko.zst`)
 - **Descriptions**: Module descriptions extracted from ELF or `modinfo`
+- **Signed**: Module signature status (from ELF when available)
 - **Builtin metadata**: Descriptions for builtin modules from kernel sources
 
 ### 🛠 **Developer-Friendly Features**
@@ -57,11 +59,23 @@ A comprehensive, feature-rich tool for inspecting Linux kernel modules. It parse
 - **Linux system** with `/proc/modules`
 - **Root privileges** (optional, for full address visibility)
 
-### Optional Dependencies
-For enhanced features including ELF parsing and compressed module support:
+### Quick install (recommended)
+Run the install script to create a Python virtual environment and install dependencies:
 
 ```bash
-pip install pyelftools zstandard
+./install.sh
+source .venv/bin/activate
+python list_kernel_modules.py --help
+```
+
+Or run without activating: `.venv/bin/python list_kernel_modules.py [options]`
+
+### Manual installation
+For enhanced features including ELF parsing and compressed module support, install optional dependencies:
+
+```bash
+pip install -r requirements.txt
+# or: pip install pyelftools zstandard
 ```
 
 These enable:
@@ -113,7 +127,7 @@ python3 list_kernel_modules.py --min-size 10000 --max-size 50000
 
 # Reference count filtering
 python3 list_kernel_modules.py --min-refs 2              # Modules with 2+ references
-python3 list_kernel_modules.py --min-refs 5 --max-refs 10
+python3 list_kernel_modules.py --min-refs 5              # Modules with 5+ references
 
 # Status filtering
 python3 list_kernel_modules.py --status Live             # Only live modules
@@ -220,20 +234,24 @@ The HTML reports provide a professional, interactive interface:
 
 ### Dashboard
 - **System information**: Complete system details
-- **Statistics cards**: Module counts, sizes, and distributions
-- **Visual charts**: Bar charts showing module distribution
+- **Statistics cards**: Module counts (loaded, builtin, unloaded), total size
+- **Overview pie chart**: Loaded / Builtin / Unloaded distribution with legend
 - **Privilege notices**: Warnings when running without root
+
+### Column selector
+- **Column list**: Before each table, a list of all column names (e.g. Name, Size, Ref Count, Dependencies, File Path, Description, Signed, Address for loadable modules)
+- **Show/hide columns**: Checkboxes next to each column name; uncheck to hide that column in the table, check to show it
 
 ### Interactive Tables
 - **Search functionality**: Real-time module name filtering
 - **Sortable columns**: Click headers to sort by any field
-- **Collapsible sections**: Expandable/collapsible module categories
+- **Collapsible sections**: Expandable/collapsible module categories (Loadable, Builtin, Unloaded)
 - **Responsive design**: Works on desktop and mobile devices
 
 ### Module Categories
-- **Loadable modules**: Currently loaded modules with full metadata
+- **Loadable modules**: Currently loaded modules with full metadata (name, size, ref count, dependencies, file path, description, signed, address)
 - **Builtin modules**: Kernel built-in modules with descriptions
-- **Unloaded modules**: Available but not loaded modules
+- **Unloaded modules**: Available but not loaded modules (name, size, file path, description)
 
 ## 🔧 Development
 
@@ -241,6 +259,8 @@ The HTML reports provide a professional, interactive interface:
 ```
 linux-kerel-code-list/
 ├── list_kernel_modules.py      # Main script
+├── install.sh                  # Install script (venv + dependencies)
+├── requirements.txt            # Python dependencies (pyelftools, zstandard)
 ├── kernel_modules/             # Modular package
 │   ├── __init__.py
 │   ├── models.py              # Data models
