@@ -678,24 +678,18 @@ class HTMLFormatter(BaseFormatter):
                 const ov = document.getElementById('overviewChart');
                 if (ov) {{
                     new Chart(ov, {{
-                        type: 'bar',
+                        type: 'pie',
                         data: {{
                             labels: ['Loaded', 'Builtin', 'Unloaded'],
                             datasets: [{{
                                 data: [{loadable_count}, {builtin_count}, {unloaded_count}],
-                                backgroundColor: ['#1e40af','#f59e0b','#94a3b8'],
-                                maxBarThickness: 18,
-                                borderRadius: 4
+                                backgroundColor: ['#1e40af','#f59e0b','#94a3b8']
                             }}]
                         }},
                         options: {{
                             maintainAspectRatio: false,
-                            plugins: {{ legend: {{ display: false }} }},
-                            scales: {{
-                                y: {{ beginAtZero: true, ticks: {{ precision: 0 }} }},
-                                x: {{ grid: {{ display: false }} }}
-                            }},
-                            layout: {{ padding: 0 }}
+                            plugins: {{ legend: {{ display: true, position: 'bottom' }} }},
+                            layout: {{ padding: 8 }}
                         }}
                     }});
                 }}
