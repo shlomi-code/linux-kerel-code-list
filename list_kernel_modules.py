@@ -1321,6 +1321,31 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             font-size: 16px;
             background: white;
         }}
+        .column-selector {{
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            background: #f1f5f9;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }}
+        .column-selector .column-selector-label {{
+            font-weight: 600;
+            color: #475569;
+            margin-right: 12px;
+        }}
+        .column-selector label {{
+            margin-right: 14px;
+            cursor: pointer;
+            font-size: 0.95em;
+            white-space: nowrap;
+        }}
+        .column-selector label:hover {{
+            color: #1e40af;
+        }}
+        .column-selector input[type="checkbox"] {{
+            margin-right: 4px;
+            vertical-align: middle;
+        }}
         .summary {{
             background: #e0f2fe;
             padding: 20px;
@@ -1449,10 +1474,30 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             }});
         }}
         
+        function setupColumnToggles() {{
+            document.querySelectorAll('.column-selector').forEach(selectorEl => {{
+                const tableId = selectorEl.getAttribute('data-for-table');
+                const table = tableId ? document.getElementById(tableId) : null;
+                if (!table) return;
+                selectorEl.querySelectorAll('input[type="checkbox"][data-col]').forEach(cb => {{
+                    const col = parseInt(cb.getAttribute('data-col'), 10);
+                    const toggleColumn = (show) => {{
+                        table.querySelectorAll('tr').forEach(tr => {{
+                            const cell = tr.cells[col];
+                            if (cell) cell.style.display = show ? '' : 'none';
+                        }});
+                    }};
+                    cb.addEventListener('change', () => toggleColumn(cb.checked));
+                    toggleColumn(cb.checked);
+                }});
+            }});
+        }}
+        
         // Initialize sorting, collapsible and chart when page loads
         document.addEventListener('DOMContentLoaded', () => {{
             makeSortable();
             makeCollapsible();
+            setupColumnToggles();
             try {{
                 const ov = document.getElementById('overviewChart');
                 if (ov) {{
@@ -1543,7 +1588,18 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
             
             <div class="section">
                 <h2>Loadable Kernel Modules ({loadable_count})</h2>
-                <table class="module-table">
+                <div class="column-selector" data-for-table="table-loadable">
+                    <span class="column-selector-label">Columns:</span>
+                    <label><input type="checkbox" data-col="0" checked> Name</label>
+                    <label><input type="checkbox" data-col="1" checked> Size</label>
+                    <label><input type="checkbox" data-col="2" checked> Ref Count</label>
+                    <label><input type="checkbox" data-col="3" checked> Dependencies</label>
+                    <label><input type="checkbox" data-col="4" checked> File Path</label>
+                    <label><input type="checkbox" data-col="5" checked> Description</label>
+                    <label><input type="checkbox" data-col="6" checked> Signed</label>
+                    <label><input type="checkbox" data-col="7" checked> Address</label>
+                </div>
+                <table class="module-table" id="table-loadable">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -1586,7 +1642,12 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         html += f"""
             <div class="section">
                 <h2>Builtin Kernel Modules ({builtin_count})</h2>
-                <table class="module-table">
+                <div class="column-selector" data-for-table="table-builtin">
+                    <span class="column-selector-label">Columns:</span>
+                    <label><input type="checkbox" data-col="0" checked> Name</label>
+                    <label><input type="checkbox" data-col="1" checked> Description</label>
+                </div>
+                <table class="module-table" id="table-builtin">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -1612,7 +1673,14 @@ def modules_to_html(modules: List[Union[KernelModule, BuiltinModule]],
         html += f"""
             <div class="section">
                 <h2>Unloaded Kernel Modules ({unloaded_count})</h2>
-                <table class="module-table">
+                <div class="column-selector" data-for-table="table-unloaded">
+                    <span class="column-selector-label">Columns:</span>
+                    <label><input type="checkbox" data-col="0" checked> Name</label>
+                    <label><input type="checkbox" data-col="1" checked> Size</label>
+                    <label><input type="checkbox" data-col="2" checked> File Path</label>
+                    <label><input type="checkbox" data-col="3" checked> Description</label>
+                </div>
+                <table class="module-table" id="table-unloaded">
                     <thead>
                         <tr>
                             <th>Name</th>

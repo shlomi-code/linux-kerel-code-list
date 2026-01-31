@@ -1,0 +1,5 @@
+# Required for .ko.zst decompression and parsers
+zstandard>=0.21.0
+
+# Optional: ELF parsing, module descriptions, signature detection
+pyelftools>=0.31
